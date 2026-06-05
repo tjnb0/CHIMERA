@@ -1,0 +1,23 @@
+# Compiled objects and modules
+*.o
+*.mod
+*.smod
+
+# Executables
+mhd_solver
+mhd2d
+a.out
+
+# Output data
+*.h5
+*.hdf5
+outputs/
+
+# Editor/IDE
+.vscode/
+*.swp
+*~
+\#*\#
+
+# macOS
+.DS_Store
