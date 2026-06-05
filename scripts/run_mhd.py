@@ -159,8 +159,11 @@ try:
         # --- Interactive animation ---
         plt.ion()
         try:
+            # blit=False: fig.text() is a figure-level artist (no parent axes),
+            # so blit=True causes a Tkinter/matplotlib crash on ax._get_view().
+            # interval=50 → smooth 20 fps; interval=1 was an unreachable 1000 fps.
             ani = animation.FuncAnimation(        # noqa: F841
-                fig, _update, frames=n_snap, interval=1, blit=True
+                fig, _update, frames=n_snap, interval=50, blit=False
             )
             plt.show()
         except KeyboardInterrupt:
