@@ -39,7 +39,7 @@ module mhd_config
     real(8), parameter :: twoPi = 6.2831853071795865d0  ! 2 * pi
     real(8), parameter :: fourPi = 12.566370614359173d0 ! 4 * pi
     real(8), parameter :: boxsize = 1.0d0               ! size of the simulation box 
-    real(8), parameter :: courant_fac = 0.4d0           ! Courant–Friedrichs–Lewy safety factor 
+    real(8), parameter :: courant_fac = 0.3d0           ! Courant–Friedrichs–Lewy safety factor 
     real(8), parameter :: P_floor = 1e-12
     real(8), parameter :: rho_floor = 1e-12
 
