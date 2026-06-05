@@ -24,11 +24,22 @@ module mhd_config
     ! Advanced parameters
     logical, parameter :: useSlopeLimiting = .true.  ! Enable/disable slope limiting 
     logical, parameter :: upgrade_2_MOOD = .true.   ! Better reconstruction
-    integer, parameter :: BC_PERIODIC = 1
-    integer, parameter :: BC_FIXED    = 2
-    integer, parameter :: BC_OUTFLOW  = 3
-    integer :: BC_x                                  ! Default BC for x
-    integer :: BC_y                                  ! Default BC for y
+
+    ! Boundary condition type constants
+    integer, parameter :: BC_PERIODIC = 1  ! Periodic (wrap-around)
+    integer, parameter :: BC_FIXED    = 2  ! Fixed (prescribed) state
+    integer, parameter :: BC_OUTFLOW  = 3  ! Zero-gradient outflow
+    integer, parameter :: BC_INFLOW   = 4  ! Driven inflow (e.g. CME source)
+
+    ! Per-side BC flags — set in each problem's setup routine.
+    ! xlo = left  (i=1),  xhi = right (i=N)
+    ! ylo = bottom(j=1),  yhi = top   (j=N)
+    integer :: BC_xlo, BC_xhi
+    integer :: BC_ylo, BC_yhi
+
+    ! Legacy single-axis flags - kept for backward compatibility during BC work;
+    ! will be removed once all setup routines are updated.
+    integer :: BC_x, BC_y
 
     ! Do not change
     real(8), parameter :: tOut = 0.01d0                 ! Interval for writing data to files
