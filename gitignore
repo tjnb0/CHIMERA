@@ -4,8 +4,8 @@
 *.smod
 
 # Executables
-mhd_solver
-mhd2d
+mhd_sim
+mhd_sim.exe
 a.out
 
 # Output data
