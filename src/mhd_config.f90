@@ -13,8 +13,6 @@ module mhd_config
     character(len=255) :: out_path     ! Output directory
     character(len=255) :: h5_filename  ! Output filename
     integer, parameter :: N = 64       ! Number of points on square grid 
-    integer, parameter :: Nx = 128     ! Horizontal grid resolution
-    integer, parameter :: Ny = 128     ! Vertical grid resolution 
     real(8), parameter :: tEnd = 1.0d0 ! Simulation end time 
 
     ! Params for HD plots with good time evolution
