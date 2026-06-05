@@ -1,57 +1,77 @@
 import subprocess
+from pathlib import Path
 from tqdm import tqdm
 import os
 
+# ---------------------------------------------------------------------------
+# Repository layout (relative to this script in CHIMERA/scripts/)
+#
+#   CHIMERA/
+#   ├── src/          – Fortran source
+#   ├── scripts/      – this file
+#   ├── obj/          – compiler objects   (auto-created)
+#   ├── mod/          – compiled modules   (auto-created)
+#   ├── outputs/      – simulation output  (auto-created)
+#   ├── Makefile
+#   └── mhd_sim[.exe]
+# ---------------------------------------------------------------------------
 
-# --------------
-# --- Config ---
-# --------------
-N_RUNS      = 1000
-SEED_START  = 1
+SCRIPT_DIR = Path(__file__).resolve().parent        # CHIMERA/scripts/
+REPO_ROOT  = SCRIPT_DIR.parent                      # CHIMERA/
+OUTPUT_DIR = REPO_ROOT / "outputs"
+EXECUTABLE = REPO_ROOT / ("mhd_sim.exe" if os.name == "nt" else "mhd_sim")
 
+# Auto-create build and output directories so a fresh clone never crashes
+for _dir in [OUTPUT_DIR, REPO_ROOT / "obj", REPO_ROOT / "mod"]:
+    _dir.mkdir(parents=True, exist_ok=True)
 
-# Run MHD sim for a given seed value
+# -----------------------------------------------------------------------
+# Config
+# -----------------------------------------------------------------------
+N_RUNS       = 1000
+SEED_START   = 1
 TEST_PROBLEM = "5"
-OUTPUT_PATH  = "../outputs/"
 
-def run_one(run_id: int) -> str:
-    """
-    Execute the Fortran binary for a single Monte-Carlo realization.
-    Returns a short summary string.
-    """
-    seed = SEED_START + run_id            
-    h5_name = f"primitive_snaps_MC{run_id + 1}.h5"
 
-    exe_name = "mhd_sim.exe" if os.name == "nt" else "mhd_sim"
-    executable = os.path.join(os.path.dirname(os.path.abspath(__file__)), exe_name)
+def run_one(run_id: int) -> None:
+    """Execute the Fortran binary for a single Monte Carlo realisation."""
+    seed    = SEED_START + run_id
+    h5_name = f"mc_run_{seed}.h5"
 
-    cmd = [
-        executable,
-        TEST_PROBLEM,
-        str(seed),
-        OUTPUT_PATH,
-        h5_name
-    ]
+    if not EXECUTABLE.is_file():
+        raise FileNotFoundError(
+            f"Executable not found: {EXECUTABLE}\n"
+            f"Run 'make' in {REPO_ROOT} first."
+        )
 
-    subprocess.run(cmd, check=True, timeout=60)
-
-    return f"Run {run_id + 1}: seed={seed}, file={h5_name}. Done."
+    subprocess.run(
+        [str(EXECUTABLE), TEST_PROBLEM, str(seed),
+         str(OUTPUT_DIR) + os.sep, h5_name],
+        cwd=str(REPO_ROOT),   # run from repo root so Fortran relative paths are stable
+        check=True,
+        timeout=60,
+    )
 
 
 if __name__ == "__main__":
-    print(f'\n Running {N_RUNS} simulations. Starting seed: {SEED_START}')
+    print(f"\nRunning {N_RUNS} Monte Carlo simulations (seeds {SEED_START}–{SEED_START + N_RUNS - 1})")
+    print(f"Output directory: {OUTPUT_DIR}\n")
+
+    failed = 0
     with tqdm(total=N_RUNS) as pbar:
         for i in range(N_RUNS):
             try:
-                # msg = run_one(i)
-                # print(msg)
                 run_one(i)
             except subprocess.CalledProcessError as e:
-                # Option to log errors if needed
-                print(f"Run {i+1} failed (return code {e.returncode})")
-                pass
+                print(f"\nRun {i + 1} failed (return code {e.returncode})")
+                failed += 1
             except subprocess.TimeoutExpired:
-                print(f"Run {i+1} timed out")
-                pass
+                print(f"\nRun {i + 1} timed out")
+                failed += 1
             finally:
                 pbar.update(1)
+
+    total = N_RUNS
+    print(f"\nDone. {total - failed}/{total} runs completed successfully.")
+    if failed:
+        print(f"       {failed} run(s) failed - check output above.")
