@@ -8,7 +8,7 @@ module mhd_derivatives
 
     implicit none
     private
-    public compute_gradients, apply_slope_limiter, reconstruction
+    public compute_gradients, apply_slope_limiter, reconstruction, thermal_pressure_check
     
 contains
 
@@ -202,6 +202,69 @@ contains
         end if
 
     end subroutine reconstruction
+
+    subroutine thermal_pressure_check(nx, ny,                        &
+                                       P_XL,  P_XR,  P_YL,  P_YR,   &
+                                       Bx_XL, Bx_XR, Bx_YL, Bx_YR, &
+                                       By_XL, By_XR, By_YL, By_YR, &
+                                       rho_XL, rho_XR, rho_YL, rho_YR, &
+                                       vx_XL,  vx_XR,  vx_YL,  vx_YR,  &
+                                       vy_XL,  vy_XR,  vy_YL,  vy_YR,  &
+                                       rho_0, vx_0, vy_0, P_0, Bx_0, By_0)
+    !
+    !   Thermal-pressure MOOD criterion.
+    !
+    !   For any reconstructed face where the implied thermal pressure
+    !   p = P_face - 0.5*(Bx_face^2 + By_face^2) drops below P_floor,
+    !   all six fields at that face are reset to the predicted cell-centre
+    !   values (first-order fallback). This extends the stencil-bounds
+    !   check in reconstruction() to guard physical positivity.
+    !
+        integer, intent(in) :: nx, ny
+        real(8), intent(inout) :: P_XL(nx,ny),   P_XR(nx,ny),   P_YL(nx,ny),   P_YR(nx,ny)
+        real(8), intent(inout) :: Bx_XL(nx,ny),  Bx_XR(nx,ny),  Bx_YL(nx,ny),  Bx_YR(nx,ny)
+        real(8), intent(inout) :: By_XL(nx,ny),  By_XR(nx,ny),  By_YL(nx,ny),  By_YR(nx,ny)
+        real(8), intent(inout) :: rho_XL(nx,ny), rho_XR(nx,ny), rho_YL(nx,ny), rho_YR(nx,ny)
+        real(8), intent(inout) :: vx_XL(nx,ny),  vx_XR(nx,ny),  vx_YL(nx,ny),  vx_YR(nx,ny)
+        real(8), intent(inout) :: vy_XL(nx,ny),  vy_XR(nx,ny),  vy_YL(nx,ny),  vy_YR(nx,ny)
+        real(8), intent(in)    :: rho_0(nx,ny), vx_0(nx,ny), vy_0(nx,ny)
+        real(8), intent(in)    :: P_0(nx,ny),   Bx_0(nx,ny), By_0(nx,ny)
+
+        real(8) :: p_th(nx,ny)
+
+        ! X-left faces
+        p_th = P_XL - 0.5d0*(Bx_XL**2 + By_XL**2)
+        where (p_th < P_floor)
+            P_XL  = P_0;  rho_XL = rho_0
+            vx_XL = vx_0; vy_XL  = vy_0
+            Bx_XL = Bx_0; By_XL  = By_0
+        end where
+
+        ! X-right faces
+        p_th = P_XR - 0.5d0*(Bx_XR**2 + By_XR**2)
+        where (p_th < P_floor)
+            P_XR  = P_0;  rho_XR = rho_0
+            vx_XR = vx_0; vy_XR  = vy_0
+            Bx_XR = Bx_0; By_XR  = By_0
+        end where
+
+        ! Y-left faces
+        p_th = P_YL - 0.5d0*(Bx_YL**2 + By_YL**2)
+        where (p_th < P_floor)
+            P_YL  = P_0;  rho_YL = rho_0
+            vx_YL = vx_0; vy_YL  = vy_0
+            Bx_YL = Bx_0; By_YL  = By_0
+        end where
+
+        ! Y-right faces
+        p_th = P_YR - 0.5d0*(Bx_YR**2 + By_YR**2)
+        where (p_th < P_floor)
+            P_YR  = P_0;  rho_YR = rho_0
+            vx_YR = vx_0; vy_YR  = vy_0
+            Bx_YR = Bx_0; By_YR  = By_0
+        end where
+
+    end subroutine thermal_pressure_check
 
 
 end module mhd_derivatives
