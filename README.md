@@ -169,8 +169,7 @@ with h5py.File("orszag_tang.h5", "r") as f:
 
 - Tóth, G. (2000). *The ∇·B = 0 constraint in shock-capturing MHD codes.* J. Comput. Phys.
 - Evans, C. R. & Hawley, J. F. (1988). *Simulation of magnetohydrodynamic flows: A constrained transport method.* ApJ.
-- van Leer, B. (1979). *Towards the ultimate conservative difference scheme.* J. Comput. Phys.
-- Gardiner, T. A. & Stone, J. M. (2005). *An unsplit Godunov method for ideal MHD via constrained transport.* J. Comput. Phys.
+- van Leer, B. (1997). *Towards the ultimate conservative difference scheme.* J. Comput. Phys.
 - Clain, S., Diot, S. & Loubère, R. (2011). *A high-order finite volume method for hyperbolic systems: Multi-dimensional Optimal Order Detection (MOOD).* J. Comput. Phys.
 
 ---
