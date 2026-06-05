@@ -1,7 +1,7 @@
 # CHIMERA
-### Compressible, High-resolution, Ideal MHD with Euler-based Riemann Approach
+### Constrained-transport, High-resolution Ideal MHD with Ensemble Randomization Approach
 
-A finite-volume solver for the **compressible ideal magnetohydrodynamics (MHD)** equations in two spatial dimensions, written in modern Fortran. Developed as an independent project.
+A finite-volume solver for the compressible ideal magnetohydrodynamics (MHD) equations in two spatial dimensions, written in modern Fortran. Developed as an independent project.
 
 ---
 
