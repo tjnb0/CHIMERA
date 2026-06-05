@@ -134,6 +134,17 @@ program main
         call reconstruction(Bx_prime, Bx_dx, Bx_dy, dx,N,N,Bx_XL, Bx_XR, Bx_YL, Bx_YR, .false.)
         call reconstruction(By_prime, By_dx, By_dy, dx,N,N,By_XL, By_XR, By_YL, By_YR, .false.)
 
+        ! Thermal pressure positivity check (MOOD extension):
+        ! Fall back to cell-centre on any face where P - 0.5*B^2 < P_floor
+        call thermal_pressure_check(N, N,                              &
+            P_XL,  P_XR,  P_YL,  P_YR,                               &
+            Bx_XL, Bx_XR, Bx_YL, Bx_YR,                             &
+            By_XL, By_XR, By_YL, By_YR,                              &
+            rho_XL, rho_XR, rho_YL, rho_YR,                          &
+            vx_XL,  vx_XR,  vx_YL,  vx_YR,                          &
+            vy_XL,  vy_XR,  vy_YL,  vy_YR,                          &
+            rho_prime, vx_prime, vy_prime, P_prime, Bx_prime, By_prime)
+
 
         ! Compute fluxes of conserved vars (local Lax-Friedrichs/Rusanov)
         !   - For x-faces: use left/right states in x-direction
@@ -163,9 +174,15 @@ program main
         ! Output data every interval specified in 
         ! config file, and again at the end of the sim
         if (t >= outputCount * tOut .or. t >= tEnd) then
+            
+            ! Update primitives 
+            call average_face_to_cell_B(b_x, b_y, N, N, Bx, By)
+            call get_primitive(Mass, Momx, Momy, Energy, Bx, By, &
+                               gamma, vol, N, N, rho, vx, vy, P)
+
             ! Append the current field data
             rho_all(outputCount, :, :) = rho
-            P_all(outputCount, :, :) = P
+            P_all(outputCount, :, :) = P - 0.5d0*(Bx*Bx + By*By)
             Bx_all(outputCount, :, :) = Bx
             By_all(outputCount, :, :) = By
             Vx_all(outputCount, :, :) = Vx

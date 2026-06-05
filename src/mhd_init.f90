@@ -279,7 +279,7 @@ contains
 
         call compute_curl_2d(Az, dx, N, N, b_x, b_y)
         call average_face_to_cell_B(b_x, b_y, N, N, Bx, By)
-        P = P !+ 0.5d0 * (Bx*Bx + By*By)
+        P = P + 0.5d0 * (Bx*Bx + By*By)
     end subroutine setup_OT_vortex
 
 
@@ -355,6 +355,7 @@ contains
         ! Compute B = curl(Az)
         call compute_curl_2d(Az, dx, N, N, b_x, b_y)
         call average_face_to_cell_B(b_x, b_y, N, N, Bx, By)
+        P = P + 0.5d0 * (Bx*Bx + By*By)
 
         ! Set magnetic field magnitude array
         if (allocated(Bmag)) Bmag = sqrt(Bx**2 + By**2)
@@ -412,6 +413,8 @@ contains
                 end if
             end do
         end do
+        P = P + 0.5d0 * (Bx*Bx + By*By)
+
         if (allocated(Bmag)) Bmag = sqrt(Bx**2 + By**2)
         if (allocated(Az))   Az   = 0.d0 
     end subroutine setup_rotor
@@ -685,195 +688,6 @@ contains
     !      then additionally rescale to match target V_0 and B_0 from physics sampling.
     !   5. Set uniform thermodynamic base state with small GRF perturbations.
     !
-    subroutine setup_GRF_fields_OLD(gamma_val, V_0, B_0)
-        real(8), intent(in) :: gamma_val, V_0, B_0
-
-        ! GRF potential fields
-        real(8), allocatable :: psi(:,:)    ! Vorticity stream function
-        real(8), allocatable :: A_pot(:,:)  ! Magnetic vector potential (z-component)
-        real(8), allocatable :: grf_rho(:,:)! GRF for density perturbation
-        real(8), allocatable :: grf_P(:,:)  ! GRF for pressure perturbation
-
-        ! Rosofsky & Huerta (2023) scaling constants (Sec. 4.1)
-        real(8), parameter :: c_psi = 0.05d0   ! Vorticity potential scale
-        real(8), parameter :: c_A   = 0.001d0  ! Magnetic potential scale
-
-        ! Thermodynamic base state and perturbation amplitudes
-        real(8), parameter :: rho_mean = 1.0d0
-        real(8), parameter :: P_mean   = 1.0d0
-        real(8), parameter :: rho_pert_amp = 0.1d0  ! Fractional density perturbation
-        real(8), parameter :: P_pert_amp   = 0.05d0 ! Fractional pressure perturbation
-        real(8) :: c_s_loc, c_a_loc, c_f_loc, v_loc, total_max, scale
-        real(8), parameter :: target_speed = 2.0d0 
-
-        ! Diagnostic variables
-        real(8) :: v_rms, B_rms, c_s_avg, P_avg, l_scale, runif
-
-        integer :: ix, iy
-        integer :: ixp, ixm, iyp, iym   ! Periodic neighbor indices
-
-        ! --- Setup ---
-        BC_x = BC_PERIODIC
-        BC_y = BC_PERIODIC
-        gamma = gamma_val
-
-        allocate(psi(N,N), A_pot(N,N), grf_rho(N,N), grf_P(N,N))
-
-        ! =========================================================
-        ! Step 1: Generate four independent GRFs using RBF kernel
-        ! =========================================================
-        ! All fields use length scale \in [0.15,0.25] as in Rosofsky & Huerta.
-        ! Independent calls produce statistically independent fields because
-        ! the RNG state advances between calls.
-        
-        ! Set RBF kernel length scale
-        call random_number(runif)
-        l_scale = 0.15d0 + 0.1d0*runif
-
-        call generate_GRF(l_scale, psi)     ! Stream function for velocity
-        call generate_GRF(l_scale, A_pot)   ! Magnetic vector potential
-        call generate_GRF(l_scale, grf_rho) ! Density perturbation field
-        call generate_GRF(l_scale, grf_P)   ! Pressure perturbation field
-
-        ! =========================================================
-        ! Step 2: Derive divergence-free velocity from psi
-        ! =========================================================
-        ! v = c_psi * curl(psi hat_z) = c_psi * (d psi/dy, -d psi/dx, 0)
-        ! Using periodic-aware centered finite differences.
-        !
-        ! Index convention: X varies with ix (first index), Y with iy (second)
-        !   d psi / dy -> differences in iy direction
-        !   d psi / dx -> differences in ix direction
-
-        do iy = 1, N
-            do ix = 1, N
-                ! Periodic neighbor indices
-                ixp = mod(ix,   N) + 1   ! ix + 1 (wraps: N -> 1)
-                ixm = mod(ix-2+N, N) + 1 ! ix - 1 (wraps: 1 -> N)
-                iyp = mod(iy,   N) + 1
-                iym = mod(iy-2+N, N) + 1
-
-                ! vx =  c_psi * d(psi)/dy
-                vx(ix, iy) = c_psi * (psi(ix, iyp) - psi(ix, iym)) / (2.0d0 * dx)
-
-                ! vy = -c_psi * d(psi)/dx
-                vy(ix, iy) = -c_psi * (psi(ixp, iy) - psi(ixm, iy)) / (2.0d0 * dx)
-            end do
-        end do
-
-        ! =========================================================
-        ! Step 3: Scale velocity to match target V_0
-        ! =========================================================
-        ! The c_psi pre-scaling from Rosofsky & Huerta ensures numerical
-        ! stability (CFL-safe magnitudes). We then further rescale to match
-        ! the physics parameters sampled in sample_physics_parameters.
-
-        v_rms = sqrt(sum(vx**2 + vy**2) / dble(N*N))
-        if (v_rms > 1.0d-10) then
-            vx = vx * (V_0 / v_rms)
-            vy = vy * (V_0 / v_rms)
-        end if
-
-        ! =========================================================
-        ! Step 4: Derive divergence-free magnetic field from A_pot
-        ! =========================================================
-        ! B = c_A * curl(A hat_z) = c_A * (dA/dy, -dA/dx, 0)
-        ! Store the potential in Az and use the existing curl routine.
-        ! The c_A constant is absorbed into Az before calling compute_curl_2d,
-        ! so b_x and b_y already have the Rosofsky & Huerta scaling applied.
-
-        Az = c_A * A_pot
-
-        call compute_curl_2d(Az, dx, N, N, b_x, b_y)
-        call average_face_to_cell_B(b_x, b_y, N, N, Bx, By)
-
-        ! =========================================================
-        ! Step 5: Scale B to match target B_0
-        ! =========================================================
-        B_rms = sqrt(sum(Bx**2 + By**2) / dble(N*N))
-        if (B_rms > 1.0d-10) then
-            ! Also rescale Az consistently so curl(Az) = B remains true
-            Az = Az * (B_0 / B_rms)
-            Bx = Bx * (B_0 / B_rms)
-            By = By * (B_0 / B_rms)
-        else
-            ! Fallback: uniform weak field if GRF produced near-zero B
-            Az = 0.0d0
-            Bx = 0.1d0 * B_0
-            By = 0.0d0
-        end if
-
-        if (allocated(Bmag)) Bmag = sqrt(Bx**2 + By**2)
-
-        ! Compute worst-case fast magnetosonic + flow speed across all cells
-        total_max = 0.0d0
-        do iy = 1, N
-            do ix = 1, N
-                c_s_loc = sqrt(gamma * P(ix,iy) / rho(ix,iy))
-                c_a_loc = sqrt((Bx(ix,iy)**2 + By(ix,iy)**2) / rho(ix,iy))
-                c_f_loc = sqrt(c_s_loc**2 + c_a_loc**2)
-                v_loc   = sqrt(vx(ix,iy)**2 + vy(ix,iy)**2)
-                total_max = max(total_max, c_f_loc + v_loc)
-            end do
-        end do
-
-        ! Target: max signal speed <= target_speed (tune to your dt/dx ratio)
-        if (total_max > target_speed) then
-            scale = target_speed / total_max
-            vx = vx * scale;  vy = vy * scale
-            Bx = Bx * scale;  By = By * scale
-            Az = Az * scale
-            if (allocated(Bmag)) Bmag = sqrt(Bx**2 + By**2)
-        end if
-
-        ! =========================================================
-        ! Step 6: Set thermodynamic fields with GRF perturbations
-        ! =========================================================
-        ! Normalize GRF perturbations to [-1, 1] range before applying
-        ! fractional amplitudes, so the perturbation size is predictable.
-
-        if (maxval(abs(grf_rho)) > 1.0d-10) &
-            grf_rho = grf_rho / maxval(abs(grf_rho))
-        if (maxval(abs(grf_P)) > 1.0d-10) &
-            grf_P   = grf_P   / maxval(abs(grf_P))
-
-        rho = rho_mean * (1.0d0 + rho_pert_amp * grf_rho)
-        P   = P_mean   * (1.0d0 + P_pert_amp   * grf_P)
-
-        ! Safety floors
-        rho = max(0.1d0, rho)
-        P   = max(0.1d0, P)
-
-        ! =========================================================
-        ! Step 7: Compute and store realized physics diagnostics
-        ! =========================================================
-        v_rms   = sqrt(sum(vx**2 + vy**2) / dble(N*N))
-        B_rms   = sqrt(sum(Bx**2 + By**2) / dble(N*N))
-        P_avg   = sum(P) / dble(N*N)
-        c_s_avg = sqrt(gamma * P_avg / (sum(rho) / dble(N*N)))
-
-        gamma_actual = gamma
-        M_s_actual   = v_rms / (c_s_avg + 1.0d-16)
-        beta_actual  = 2.0d0 * P_avg / (B_rms**2 + 1.0d-16)
-
-        !print *, ""
-        !print *, "GRF Initial Conditions - Realized Values:"
-        !print *, "  gamma =", gamma_actual
-        !print *, "  M_s   =", M_s_actual
-        !print *, "  beta  =", beta_actual
-        !print *, "  l_scale (RBF) =", l_scale
-        !print *, ""
-        !print *, "Field Statistics:"
-        !print *, "  rho: min/mean/max =", minval(rho), sum(rho)/dble(N*N), maxval(rho)
-        !print *, "  |v|: RMS/max      =", v_rms, maxval(sqrt(vx**2 + vy**2))
-        !print *, "  |B|: RMS/max      =", B_rms, maxval(Bmag)
-        !print *, ""
-
-        deallocate(psi, A_pot, grf_rho, grf_P)
-
-    end subroutine setup_GRF_fields_OLD
-
-
     subroutine setup_GRF_fields(gamma_val, V_0, B_0)
         real(8), intent(in) :: gamma_val, V_0, B_0
 
@@ -999,6 +813,8 @@ contains
         !print *, "  |B|: RMS/max      =", B_rms, maxval(Bmag)
         !print *, ""
 
+        ! Convert to total pressure for setup
+        P = P + 0.5d0*(Bx*Bx + By*By)
         deallocate(psi, A_pot, grf_rho, grf_P)
 
     end subroutine setup_GRF_fields
