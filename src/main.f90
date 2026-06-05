@@ -60,7 +60,6 @@ program main
 
         ! Calc local wave speeds for CFL-limited timestep:
         c0_sq = gamma * (P - 0.5d0 * (Bx*Bx + By*By)) * inv_rho       ! (sound speed)^2
-        c0_sq = gamma * P * inv_rho
         ca_sq = (Bx*Bx + By*By) * inv_rho                             ! (Alfven speed)^2
         cf    = sqrt(c0_sq + ca_sq)                                   ! fast mag.sonic speed
         dt    = courant_fac * minval(dx / (cf + sqrt(vx*vx + vy*vy))) ! timestep
