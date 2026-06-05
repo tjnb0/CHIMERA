@@ -1,0 +1,109 @@
+module mhd_change_states
+    use mhd_config
+    !----------------------------------------------------------------------------
+    ! Purpose: Subroutines to converting between primitive and conserved variables
+    !          (density, velocity, pressure,  magnetic field) <->
+    !          (mass, momentum, total energy, magnetic field)
+    !-----------------------------------------------------------------------------
+
+    implicit none
+    private
+    public get_conserved, get_primitive
+    
+contains
+
+
+    subroutine get_conserved(rho, vx, vy, P, Bx, By, gamma, vol, nx, ny, &
+                             Mass, Momx, Momy, Energy)
+    ! 
+    !   Convert primitive variables to conserved variables.
+    !
+    !   Inputs:
+    !       - rho : (nx, ny) array
+    !       - vx  : (nx, ny) array
+    !       - vy  : (nx, ny) array
+    !       - P   : (nx, ny) array
+    !       - Bx  : (nx, ny) array
+    !       - By  : (nx, ny) array
+    !       - gamma : ideal gas gamma (scalar)
+    !       - vol   : cell volume (scalar)
+    !
+    !   Outputs:
+    !       - Mass   : (nx, ny) array;  rho * vol
+    !       - Momx   : (nx, ny) array;  rho * vx * vol
+    !       - Momy   : (nx, ny) array;  rho * vy * vol
+    !       - Energy : (nx, ny) array;  (internal + kinetic + magnetic) * vol
+    !
+        integer, intent(in) :: nx, ny
+        real(8), intent(in) :: rho(nx, ny), vx(nx, ny), vy(nx, ny)
+        real(8), intent(in) :: P(nx, ny), Bx(nx, ny), By(nx, ny)
+        real(8), intent(in) :: gamma, vol
+        real(8), intent(out) :: Mass(nx,ny), Momx(nx,ny), Momy(nx,ny), Energy(nx,ny)
+        real(8) :: halfB2(nx, ny), rho_cp(nx, ny), P_cp(nx, ny)
+
+        ! For realism
+        rho_cp = max(rho, rho_floor)
+        P_cp   = max(P,   P_floor)
+
+        Mass   = rho_cp  * vol
+        Momx   = Mass * vx
+        Momy   = Mass * vy
+        halfB2 = 0.5d0 * (Bx*Bx + By*By)          ! Magnetic: 0.5 * (Bx^2 + By^2)
+
+        ! Total energy
+        Energy = ((P_cp - halfB2) / (gamma - 1.d0) & ! Internal: (P - 0.5*B^2) / (gamma-1)
+                + 0.5d0 * rho_cp * (vx*vx + vy*vy) & ! Kinetic : 0.5 * rho * (vx^2 + vy^2)
+                + halfB2) * vol       
+
+    end subroutine get_conserved
+
+
+    subroutine get_primitive(Mass, Momx, Momy, Energy, Bx, By, gamma, vol, nx, ny, &
+                             rho, vx, vy, P)
+    ! 
+    !   Convert conserved variables to primitive variables.
+    !
+    !   Inputs:
+    !       - Mass   : (nx, ny) array
+    !       - Momx   : (nx, ny) array
+    !       - Momy   : (nx, ny) array
+    !       - Energy : (nx, ny) array
+    !       - Bx     : (nx, ny) array
+    !       - By     : (nx, ny) array
+    !       - gamma  : scalar
+    !       - vol    : scalar
+    !
+    !   Outputs:
+    !       - rho : (nx, ny) array;  Mass / vol
+    !       - vx  : (nx, ny) array;  Momx / (rho * vol)
+    !       - vy  : (nx, ny) array;  Momy / (rho * vol)
+    !       - P   : (nx, ny) array;  Pressure
+    ! 
+
+        integer, intent(in) :: nx, ny
+        real(8), intent(in) :: Mass(nx, ny), Momx(nx, ny), Momy(nx, ny)
+        real(8), intent(in) :: Energy(nx, ny), Bx(nx, ny), By(nx, ny)
+        real(8), intent(in) :: gamma, vol
+        real(8), intent(out) :: rho(nx, ny), vx(nx, ny), vy(nx, ny), P(nx, ny)
+        real(8) :: halfB2(nx, ny)
+
+        rho = Mass / vol
+        rho = max(rho, rho_floor)
+
+        vx  = Momx / Mass
+        vy  = Momy / Mass
+        halfB2 = 0.5d0 * (Bx*Bx + By*By)
+
+        !   P = (Energy/vol - K.E. - Mag. Energy) * (gamma-1) + Mag. Pressure
+        !     - Kinetic       = 0.5 * rho * (vx^2 + vy^2)
+        !     - Mag. Energy   = 0.5 * (Bx^2 + By^2)
+        !     - Mag. Pressure = 0.5 * (Bx^2 + By^2)
+        P = (Energy / vol - 0.5d0*rho*(vx*vx + vy*vy) - halfB2) &
+          * (gamma - 1.d0) + halfB2
+        P   = max(P, P_floor)
+        
+
+    end subroutine get_primitive
+
+    
+end module mhd_change_states
