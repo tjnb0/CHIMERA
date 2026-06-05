@@ -298,6 +298,8 @@ contains
         P  = 2.5d0    ! Constant pressure
         Bx = 0.0d0    ! Uniform magnetic field
         By = 0.0d0    ! Uniform magnetic field
+        b_x = 0.0d0; b_y = 0.0d0
+        
         do iy = 1, N
             do ix = 1, N
                 ! Density and x-velocity shear
@@ -378,7 +380,8 @@ contains
         x0    = boxsize/2.d0;          y0  = boxsize/2.d0
         r0    = 0.1d0  * boxsize;      r1  = 0.115d0 * boxsize
         u0    = 2.0d0;                 P   = 1.0d0            
-        Bx    = 5.0d0 / sqrt(4.d0*pi); By  = 0.0d0 
+        Bx    = 5.0d0 / sqrt(4.d0*pi); By  = 0.0d0
+        b_x = Bx;                      b_y = 0.0d0
         vx    = 0.0d0;                 vy  = 0.0d0
 
         do iy = 1, N
