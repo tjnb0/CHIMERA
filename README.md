@@ -25,7 +25,7 @@ alongside realised physics diagnostics (gamma, Mach number, plasma beta).
 
 ## Governing Equations
 
-CHIMERA advances the compressible MHD system in conservation form:
+CHIMERA advances the compressible MHD system as:
 
 ```
 d(rho)/dt   + div(rho*v)                       = 0      (mass)
