@@ -35,8 +35,8 @@ try:
     # -----------------------------------------------------------------------
     # Main options
     # -----------------------------------------------------------------------
-    test_problem = "1"   # 1=Orszag-Tang, 2=KH, 3=Field Loop, 4=Rotor, 5=MC
-    N            = 16    # Grid size (N x N cells)
+    test_problem = "5"   # 1=Orszag-Tang, 2=KH, 3=Field Loop, 4=Rotor, 5=MC
+    N            = 64    # Grid size (N x N cells)
     fortran_seed = 42    # Seed for MC runs (ignored for problems 1-4)
     run_new_sim  = True  # True=run simulation, False=plot existing output
 
