@@ -94,6 +94,12 @@ module mhd_init
     real(8), allocatable :: cf(:,:)                  ! Local fast magnetosonic speed
     real(8), allocatable :: divB(:,:)                ! Magnetic field divergence
 
+    ! Ghost-cell padded arrays (N+2) x (N+2) for open/outflow boundary conditions.
+    ! Interior [2:N+1, 2:N+1] holds the physical domain; rows/columns 1 and N+2
+    ! are ghost cells filled each timestep by fill_ghost_cells() in mhd_bc.
+    real(8), allocatable :: rho_pad(:,:), vx_pad(:,:), vy_pad(:,:)
+    real(8), allocatable :: P_pad(:,:),   Bx_pad(:,:), By_pad(:,:)
+
     
 contains
 
@@ -150,9 +156,13 @@ contains
 
         ! Allocate arrays for wave speeds and divergence
         allocate(c0_sq(N,N))  ! Local sound speed
-        allocate(ca_sq(N,N))  ! Local Alfvén speed
+        allocate(ca_sq(N,N))  ! Local Alfven speed
         allocate(cf(N,N))     ! Local fast magnetosonic speed
         allocate(divB(N,N))   ! Magnetic field divergence
+
+        ! Allocate ghost-cell padded arrays for open boundary conditions
+        allocate(rho_pad(N+2,N+2), vx_pad(N+2,N+2), vy_pad(N+2,N+2))
+        allocate(P_pad(N+2,N+2),   Bx_pad(N+2,N+2), By_pad(N+2,N+2))
 
         ! Allocate final output arrays
         allocate(rho_all(Nsnap_max, N, N))
@@ -267,9 +277,9 @@ contains
     !
     subroutine setup_OT_vortex()   
         
-        BC_x = BC_PERIODIC ! Periodic BC in x
-        BC_y = BC_PERIODIC ! Periodic BC in y
-        
+        BC_xlo = BC_PERIODIC;  BC_xhi = BC_PERIODIC
+        BC_ylo = BC_PERIODIC;  BC_yhi = BC_PERIODIC
+
         rho = 25.0d0 / (36.0d0 * pi) ! uniform density
         P   =  5.0d0 / (12.0d0 * pi) ! uniform gas pressure
         vx  = -sin(twopi * Y)        ! inital x velocity 
@@ -292,14 +302,12 @@ contains
         integer :: ix, iy
         real(8) :: x0, y0, sigma, amp
         
-        BC_x = BC_PERIODIC ! Periodic BC in x
-        BC_y = BC_PERIODIC ! Periodic BC in y
+        BC_xlo = BC_PERIODIC;  BC_xhi = BC_PERIODIC
+        BC_ylo = BC_PERIODIC;  BC_yhi = BC_PERIODIC
 
         P  = 2.5d0    ! Constant pressure
         Bx = 0.0d0    ! Uniform magnetic field
         By = 0.0d0    ! Uniform magnetic field
-        b_x = 0.0d0; b_y = 0.0d0
-        
         do iy = 1, N
             do ix = 1, N
                 ! Density and x-velocity shear
@@ -322,6 +330,7 @@ contains
         end do
         if (allocated(Bmag)) Bmag = sqrt(Bx**2 + By**2)
         if (allocated(Az))   Az = 0.d0
+        b_x = 0.0d0;  b_y = 0.0d0       ! face-centred B: B=0 everywhere for KH
     end subroutine setup_KH_instab
 
 
@@ -334,8 +343,8 @@ contains
         integer :: ix, iy
         real(8) :: x0, y0, r0, r, A0
 
-        BC_x = BC_PERIODIC ! Periodic BC in x
-        BC_y = BC_PERIODIC ! Periodic BC in y
+        BC_xlo = BC_PERIODIC;  BC_xhi = BC_PERIODIC
+        BC_ylo = BC_PERIODIC;  BC_yhi = BC_PERIODIC
 
         r0 = 0.3d0 * boxsize ! Field loop radius
         A0 = 1.0d-3          ! Field loop amplitude
@@ -373,15 +382,14 @@ contains
         integer :: ix, iy
         real(8) :: x0, y0, r0, r, rx, ry, r1, u0, f
 
-        BC_x = BC_PERIODIC ! Open BC in x
-        BC_y = BC_PERIODIC ! Open BC in y
+        BC_xlo = BC_OUTFLOW;  BC_xhi = BC_OUTFLOW
+        BC_ylo = BC_OUTFLOW;  BC_yhi = BC_OUTFLOW
 
         rho = 1.0d0
         x0    = boxsize/2.d0;          y0  = boxsize/2.d0
         r0    = 0.1d0  * boxsize;      r1  = 0.115d0 * boxsize
         u0    = 2.0d0;                 P   = 1.0d0            
-        Bx    = 5.0d0 / sqrt(4.d0*pi); By  = 0.0d0
-        b_x = Bx;                      b_y = 0.0d0
+        Bx    = 5.0d0 / sqrt(4.d0*pi); By  = 0.0d0 
         vx    = 0.0d0;                 vy  = 0.0d0
 
         do iy = 1, N
@@ -419,7 +427,8 @@ contains
         P = P + 0.5d0 * (Bx*Bx + By*By)
 
         if (allocated(Bmag)) Bmag = sqrt(Bx**2 + By**2)
-        if (allocated(Az))   Az   = 0.d0 
+        if (allocated(Az))   Az   = 0.d0
+        b_x = Bx;  b_y = 0.0d0          ! face-centred B must match cell-centred initial state
     end subroutine setup_rotor
 
 
@@ -488,7 +497,7 @@ contains
         
         ! Gamma: specific heat ratio
         gamma_val = 1.2d0 + 0.5d0 * rand_vals(1)  ! Range: Unif(1.2, 1.7)
-        !   - gamma ~ 5/3 ≈ 1.67: Monatomic gas
+        !   - gamma ~ 5/3 ~ 1.67: Monatomic gas
         !   - gamma ~ 1.4: Diatomic gas
         !   - gamma ~ 1.2: Approaching isothermal
         
@@ -584,7 +593,7 @@ contains
         ! Fourier-space coefficient arrays (real and imaginary parts)
         real(8), allocatable :: fhat_re(:,:), fhat_im(:,:)
 
-        ! Local scalars — all declared before any executable statements
+        ! Local scalars - all declared before any executable statements
         real(8) :: kx_val, ky_val, k_sq, S_k
         real(8) :: rand_u1, rand_u2, gauss_re, gauss_im
         real(8) :: phase_arg, norm_re
@@ -709,8 +718,8 @@ contains
         real(8) :: l_scale, runif
         integer :: ix, iy, ixp, ixm, iyp, iym
 
-        BC_x = BC_PERIODIC
-        BC_y = BC_PERIODIC
+        BC_xlo = BC_PERIODIC;  BC_xhi = BC_PERIODIC
+        BC_ylo = BC_PERIODIC;  BC_yhi = BC_PERIODIC
         gamma = gamma_val
 
         allocate(psi(N,N), A_pot(N,N), grf_rho(N,N), grf_P(N,N))
@@ -772,7 +781,7 @@ contains
         rho = max(rho_mean * (1.0d0 + rho_pert_amp * grf_rho), 0.1d0)
         P   = max(P_mean   * (1.0d0 + P_pert_amp   * grf_P),   0.1d0)
 
-        ! Step 7: Speed cap — only rescale VELOCITY, not B
+        ! Step 7: Speed cap - only rescale VELOCITY, not B
         !   B contributes to c_f but is already set to the physically correct
         !   scale via beta. Squashing it here would break the sampled beta.
         total_max = 0.0d0
@@ -790,7 +799,7 @@ contains
             scale = target_cf_max / total_max
             vx = vx * scale
             vy = vy * scale
-            ! B is NOT rescaled here — beta is a sampled physics parameter
+            ! B is NOT rescaled here - beta is a sampled physics parameter
         end if
 
         ! Step 8: Diagnostics

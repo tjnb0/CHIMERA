@@ -3,20 +3,20 @@ module mhd_bc
     !--------------------------------------------------------------------------
     ! Purpose: Ghost-cell boundary conditions for the 2D MHD solver.
     !
-    !   Each call to fill_ghost_cells pads a single N×N physical field into
-    !   an (N+2)×(N+2) array.  The mapping is:
+    !   Each call to fill_ghost_cells pads a single N x N physical field into
+    !   an (N+2) x (N+2) array.  The mapping is:
     !
-    !       physical cell (i, j)  ->  f_pad(i+1, j+1)     i,j ∈ [1,N]
-    !       left   ghost          -> f_pad(1,    2:N+1)
+    !       physical cell (i, j)  ->  f_pad(i+1, j+1)     i,j in [1,N]
+    !       left   ghost          ->  f_pad(1,    2:N+1)
     !       right  ghost          ->  f_pad(N+2,  2:N+1)
     !       bottom ghost          ->  f_pad(2:N+1, 1)
     !       top    ghost          ->  f_pad(2:N+1, N+2)
     !
     !   BC types (defined in mhd_config):
-    !       BC_PERIODIC - circular wrap (reproduces original cshift behaviour)
-    !       BC_OUTFLOW  - zero-gradient: ghost = nearest interior cell
-    !       BC_FIXED    - prescribed ambient state via optional f_ambient arg
-    !       BC_INFLOW   - driven inflow: same as FIXED; f_ambient must be set
+    !       BC_PERIODIC -- circular wrap (reproduces original cshift behaviour)
+    !       BC_OUTFLOW  -- zero-gradient: ghost = nearest interior cell
+    !       BC_FIXED    -- prescribed ambient state via optional f_ambient arg
+    !       BC_INFLOW   -- driven inflow: same as FIXED; f_ambient must be set
     !                     by the problem setup routine for each relevant field
     !
     !   Usage (main loop, before compute_gradients):
@@ -35,25 +35,25 @@ contains
 
     subroutine fill_ghost_cells(f, f_pad, f_ambient)
     !
-    !   Fill an (N+2)x(N+2) padded array from the N×N physical field f,
+    !   Fill an (N+2)x(N+2) padded array from the NxN physical field f,
     !   applying the BC type for each side from mhd_config.
     !
     !   Inputs:
-    !       f         - physical field  (N, N)
-    !       f_ambient - (optional) prescribed ambient state (N, N);
+    !       f         -- physical field  (N, N)
+    !       f_ambient -- (optional) prescribed ambient state (N, N);
     !                   required when any side uses BC_FIXED or BC_INFLOW
     !
     !   Output:
-    !       f_pad     - padded field  (N+2, N+2)
+    !       f_pad     -- padded field  (N+2, N+2)
     !
         real(8), intent(in)  :: f(N, N)
         real(8), intent(out) :: f_pad(N+2, N+2)
         real(8), intent(in), optional :: f_ambient(N, N)
 
-        ! Copy physical domain into interior of padded array 
+        ! - Copy physical domain into interior of padded array -------
         f_pad(2:N+1, 2:N+1) = f(1:N, 1:N)
 
-        !--- X-direction ghost columns ---
+        ! - X-direction ghost columns --------------------
 
         ! Left ghost column (xlo)
         select case (bc_xlo)
@@ -83,7 +83,7 @@ contains
                 f_pad(N+2, 2:N+1) = f(N, 1:N)
         end select
 
-        !--- Y-direction ghost rows ---
+        ! - Y-direction ghost rows ----------------------
 
         ! Bottom ghost row (ylo)
         select case (bc_ylo)
@@ -113,8 +113,8 @@ contains
                 f_pad(2:N+1, N+2) = f(1:N, N)
         end select
 
-        ! --- Corners (needed by constrained transport Ez evaluation) ---
-        ! Fill last - each corner uses the per-side flags for its two meeting edges.
+        ! - Corners (needed by constrained transport Ez evaluation) -----
+        ! Fill last -- each corner uses the per-side flags for its two meeting edges.
         ! Fully periodic: diagonal wrap. Mixed or all non-periodic: nearest corner cell.
         call fill_corners(f_pad, f)
 
@@ -144,8 +144,8 @@ contains
     pure function corner_val(f, ix, iy, bc_this_x, bc_this_y) result(val)
     !
     !   Return the appropriate ghost value for a corner cell.
-    !       (ix, iy)     - nearest interior corner indices (1 or N in each dim)
-    !       bc_this_x/y  - BC flags for the two sides meeting at this corner
+    !       (ix, iy)     -- nearest interior corner indices (1 or N in each dim)
+    !       bc_this_x/y  -- BC flags for the two sides meeting at this corner
     !
         real(8), intent(in) :: f(N, N)
         integer, intent(in) :: ix, iy, bc_this_x, bc_this_y
