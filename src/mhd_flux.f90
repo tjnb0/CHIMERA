@@ -4,7 +4,8 @@ module mhd_flux
     !---------------------------------------------------------------------------
     ! Purpose: Subroutines for flux computations in MHD solver: apply numerical
     !          fluxes to conserved fields, constrained transport for divergence
-    !          control, and flux function evaluation. Assumes periodic BCs
+    !          control, and flux function evaluation. Supports periodic,
+    !          outflow, fixed, and inflow BCs via per-side flags in mhd_config.
     !---------------------------------------------------------------------------
 
 
@@ -16,55 +17,82 @@ contains
 
 
     subroutine update_conserved(F, flux_F_X, flux_F_Y, dx, dt, nx, ny)
-    ! 
-    !   Apply fluxes to conserved field using periodic BCs. Updates conserved 
-    !   variable F by applying the net flux diffs. in both x and y directions
+    !
+    !   Apply fluxes to conserved field F using BC-aware indexing.
+    !   For each cell: F(i,j) -= dtdx * (flux_right(i,j) - flux_left(i,j))
+    !                          + dtdx * (flux_top(i,j)   - flux_bottom(i,j))  [signs included]
+    !
+    !   xhi and yhi boundary fluxes are already encoded in flux_F_X(nx,:) and
+    !   flux_F_Y(:,ny) by the outflow ghost state set in reconstruction (step 4).
+    !   Only xlo and ylo boundaries need special treatment here.
+    !
+    !   For outflow at xlo/ylo: no incoming flux from outside the domain.
+    !   For periodic at xlo/ylo: incoming flux wraps from the opposite boundary.
     !
     !   Inputs:
     !       - flux_F_X : x-direction flux (nx, ny)
     !       - flux_F_Y : y-direction flux (nx, ny)
     !       - dx       : cell size
     !       - dt       : time step
-    !       - nx       : x grid size
-    !       - ny       : y grid size
     !
-    !   InOuts:
+    !   InOut:
     !       - F : conserved variable (nx, ny)
-    ! 
+    !
         integer, intent(in) :: nx, ny
         real(8), intent(in) :: dx, dt
         real(8), intent(in) :: flux_F_X(nx, ny), flux_F_Y(nx, ny)
         real(8), intent(inout) :: F(nx, ny)
         real(8) :: dtdx
 
-        ! Update F in each cell by adding net in/out fluxes
-        ! For each cell (i, j):
-        !   - subtract outgoing fluxes
-        !   - add incoming fluxes from left (i-1) and bottom (j-1)
-        dtdx = dt*dx
-        F = F - dtdx*flux_F_X + dtdx*cshift(flux_F_X, -1, 1) &
-              - dtdx*flux_F_Y + dtdx*cshift(flux_F_Y, -1, 2)
+        dtdx = dt * dx
+
+        ! --- X-direction update ---
+
+        ! Interior cells (i = 2..nx): incoming flux from left neighbor
+        F(2:nx, :) = F(2:nx, :) - dtdx*flux_F_X(2:nx, :) + dtdx*flux_F_X(1:nx-1, :)
+
+        ! xlo boundary (i = 1): incoming left-face flux depends on BC
+        select case (bc_xlo)
+            case (BC_PERIODIC)
+                F(1, :) = F(1, :) - dtdx*flux_F_X(1, :) + dtdx*flux_F_X(nx, :)
+            case default  ! outflow/fixed/inflow: no incoming flux from outside
+                F(1, :) = F(1, :) - dtdx*flux_F_X(1, :)
+        end select
+
+        ! --- Y-direction update ---
+
+        ! Interior cells (j = 2..ny): incoming flux from bottom neighbor
+        F(:, 2:ny) = F(:, 2:ny) - dtdx*flux_F_Y(:, 2:ny) + dtdx*flux_F_Y(:, 1:ny-1)
+
+        ! ylo boundary (j = 1): incoming bottom-face flux depends on BC
+        select case (bc_ylo)
+            case (BC_PERIODIC)
+                F(:, 1) = F(:, 1) - dtdx*flux_F_Y(:, 1) + dtdx*flux_F_Y(:, ny)
+            case default  ! outflow/fixed/inflow: no incoming flux from outside
+                F(:, 1) = F(:, 1) - dtdx*flux_F_Y(:, 1)
+        end select
 
     end subroutine update_conserved
 
 
     subroutine constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt, nx, ny)
-    ! 
-    !   Apply constrained transport to face-centered magnetic fields, i.e., 
-    !   update magnetic field components (bx, by) using discrete curl of the the 
-    !   electric field (Ez). Ez is built from B-field fluxes make sure div B ~ 0
+    !
+    !   Update face-centred B fields via constrained transport (CT).
+    !   Ez at each cell corner (i+1/2, j+1/2) is assembled from the four
+    !   surrounding cell fluxes. The two cshift calls that gathered the
+    !   (i, j+1) and (i+1, j) neighbors are replaced with explicit BC-aware
+    !   array slices: interior cells use direct neighbors; boundary cells use
+    !   either a periodic wrap or zero-gradient copy of the nearest interior flux.
     !
     !   Inputs:
     !       - flux_By_X : x-dir flux of By (nx, ny)
     !       - flux_Bx_Y : y-dir flux of Bx (nx, ny)
     !       - dx        : cell size
-    !       - dt        : timestep
-    !       - nx        : x grid size
-    !       - ny        : y grid size
+    !       - dt        : time step
     !
     !   InOuts:
-    !       - bx : magnetic field face x component 
-    !       - by : magnetic field face y component
+    !       - bx : face-centred Bx
+    !       - by : face-centred By
     !
         integer, intent(in) :: nx, ny
         real(8), intent(in) :: dx, dt
@@ -73,18 +101,36 @@ contains
 
         real(8) :: Ez(nx, ny)
         real(8) :: dbx(nx, ny), dby(nx, ny)
+        real(8) :: flux_By_X_up(nx, ny)    ! flux_By_X shifted up   (j -> j+1)
+        real(8) :: flux_Bx_Y_right(nx, ny) ! flux_Bx_Y shifted right (i -> i+1)
 
-        ! Calc z-component of electric field at cell corners
-        Ez = 0.25d0 * ( &
-            - flux_By_X &
-            - cshift(flux_By_X, 1, 2) &   ! (i, j+1) periodic in y
-            + flux_Bx_Y &
-            + cshift(flux_Bx_Y, 1, 1) )   ! (i+1, j) periodic in x
+        ! --- Gather (i, j+1) neighbor of flux_By_X ---
+        ! Interior: direct slice
+        flux_By_X_up(:, 1:ny-1) = flux_By_X(:, 2:ny)
+        ! yhi boundary: depends on BC
+        select case (bc_yhi)
+            case (BC_PERIODIC)
+                flux_By_X_up(:, ny) = flux_By_X(:, 1)
+            case default  ! zero-gradient: copy nearest interior value
+                flux_By_X_up(:, ny) = flux_By_X(:, ny)
+        end select
 
-        ! Calc discrete curl of -Ez and update bx, by
+        ! --- Gather (i+1, j) neighbor of flux_Bx_Y ---
+        flux_Bx_Y_right(1:nx-1, :) = flux_Bx_Y(2:nx, :)
+        select case (bc_xhi)
+            case (BC_PERIODIC)
+                flux_Bx_Y_right(nx, :) = flux_Bx_Y(1, :)
+            case default
+                flux_Bx_Y_right(nx, :) = flux_Bx_Y(nx, :)
+        end select
+
+        ! --- Ez at cell corners from surrounding face fluxes ---
+        Ez = 0.25d0 * (-flux_By_X - flux_By_X_up + flux_Bx_Y + flux_Bx_Y_right)
+
+        ! --- Discrete curl of -Ez updates bx and by ---
         call compute_curl_2d(-Ez, dx, nx, ny, dbx, dby)
-        bx = bx + dt * dbx  ! Update x-face B field
-        by = by + dt * dby  ! Update y-face B field
+        bx = bx + dt * dbx
+        by = by + dt * dby
 
     end subroutine constrained_transport
 
