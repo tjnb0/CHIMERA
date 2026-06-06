@@ -178,63 +178,73 @@ contains
 
     subroutine get_user_options()
     !
-    ! Get problem_type, seed, output path, and HDF5 filename from command line args
-    ! Usage: ./mhd_sim 1 12345 ./outputs/ [filename.h5]
+    !   Parse command-line arguments.
     !
-        character(len=256) :: arg1_str, arg2_str
+    !   Usage: ./mhd_sim <problem_type> <N> <seed> [output_path] [h5_filename]
+    !
+    !   Required:
+    !       problem_type : 1=Orszag-Tang, 2=KH, 3=Field Loop, 4=Rotor, 5=MC
+    !       N            : grid size (N x N cells, must be >= 4)
+    !       seed         : random seed for Monte Carlo (ignored for problems 1-4)
+    !
+    !   Optional:
+    !       output_path  : default './outputs/'
+    !       h5_filename  : default 'primitive_snaps.h5'
+    !
+        character(len=256) :: arg_str
         integer :: nargs, istat
-        
-        ! Get number of command line arguments
+
         nargs = command_argument_count()
-    
-        ! Check minimum required args
-        if (nargs < 2) then
-            print *, "ERROR: Usage: ./mhd_sim <problem_type> <seed> [output_path] [h5_filename]"
-            print *, "  problem_type: 1=Orszag-Tang, 2=KH, 3=Field Loop, 4=Rotor"
-            print *, "  seed: random seed (integer)"
-            print *, "  output_path: optional (default: './outputs/')"
-            print *, "  h5_filename: optional (default: 'primitive_snaps.h5')"
-            stop
-        end if
-        
-        ! Get arguments
-        call get_command_argument(1, arg1_str)
-        call get_command_argument(2, arg2_str)
-        
-        ! Convert strings to integers with error checking
-        read(arg1_str, *, iostat=istat) problem_type
-        if (istat /= 0) then
-            print *, "ERROR: Invalid problem_type: '", trim(arg1_str), "'"
-            stop
-        end if
-        
-        read(arg2_str, *, iostat=istat) seed
-        if (istat /= 0) then
-            print *, "ERROR: Invalid seed: '", trim(arg2_str), "'"
+
+        if (nargs < 3) then
+            print *, "ERROR: Usage: ./mhd_sim <problem_type> <N> <seed> [output_path] [h5_filename]"
+            print *, "  problem_type : 1=Orszag-Tang 2=KH 3=Field-Loop 4=Rotor 5=MC"
+            print *, "  N            : grid size (integer >= 4)"
+            print *, "  seed         : random seed (integer)"
+            print *, "  output_path  : optional (default: './outputs/')"
+            print *, "  h5_filename  : optional (default: 'primitive_snaps.h5')"
             stop
         end if
 
-        ! Optional output path (arg 3) 
-        if (nargs >= 3) then
-            call get_command_argument(3, out_path)
+        ! Arg 1: problem_type
+        call get_command_argument(1, arg_str)
+        read(arg_str, *, iostat=istat) problem_type
+        if (istat /= 0 .or. problem_type < 1 .or. problem_type > 5) then
+            print *, "ERROR: problem_type must be 1-5, got: '", trim(arg_str), "'"
+            stop
+        end if
+
+        ! Arg 2: N (grid size)
+        call get_command_argument(2, arg_str)
+        read(arg_str, *, iostat=istat) N
+        if (istat /= 0 .or. N < 4) then
+            print *, "ERROR: N must be an integer >= 4, got: '", trim(arg_str), "'"
+            stop
+        end if
+
+        ! Arg 3: seed
+        call get_command_argument(3, arg_str)
+        read(arg_str, *, iostat=istat) seed
+        if (istat /= 0) then
+            print *, "ERROR: Invalid seed: '", trim(arg_str), "'"
+            stop
+        end if
+
+        ! Arg 4: output path (optional)
+        if (nargs >= 4) then
+            call get_command_argument(4, out_path)
             out_path = trim(adjustl(out_path))
         else
-            out_path = "./outputs/" 
+            out_path = "./outputs/"
         end if
-        
-        ! Optional HDF5 filename (arg 4)
-        if (nargs >= 4) then
-            call get_command_argument(4, h5_filename)
+
+        ! Arg 5: HDF5 filename (optional)
+        if (nargs >= 5) then
+            call get_command_argument(5, h5_filename)
         else
             h5_filename = "primitive_snaps.h5"
         end if
-        
-        ! Validate problem_type
-        if (problem_type < 1 .or. problem_type > 5) then
-            print *, "ERROR: problem_type must be 1-5"
-            stop
-        end if
-        
+
     end subroutine get_user_options
 
 

@@ -10,9 +10,9 @@ module mhd_config
     ! Main Parameters
     integer :: problem_type            ! 1 = OT Vortex; 2 = KH Instab; 3 = Advection; 4 = Rotor; 5 = MC
     integer :: seed                    ! Random seed for Monte Carlo
+    integer :: N                       ! Number of points on square grid
     character(len=255) :: out_path     ! Output directory
     character(len=255) :: h5_filename  ! Output filename
-    integer, parameter :: N = 64       ! Number of points on square grid
     real(8), parameter :: tEnd = 1.0d0 ! Simulation end time
 
     ! Params for HD plots with good time evolution

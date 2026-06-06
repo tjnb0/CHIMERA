@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from datetime import datetime
 from pathlib import Path
-import re
 import h5py
 
 # ---------------------------------------------------------------------------
@@ -37,7 +36,8 @@ try:
     # Main options
     # -----------------------------------------------------------------------
     test_problem = "5"   # 1=Orszag-Tang, 2=KH, 3=Field Loop, 4=Rotor, 5=MC
-    fortran_seed = 42    # Seed for MC runs (ignored for problems 1–4)
+    N            = 64    # Grid size (N x N cells)
+    fortran_seed = 42    # Seed for MC runs (ignored for problems 1-4)
     run_new_sim  = True  # True=run simulation, False=plot existing output
 
     # -----------------------------------------------------------------------
@@ -67,21 +67,6 @@ try:
         h5_filename = "mc_run.h5" if fortran_seed == 0 else f"mc_run_{fortran_seed}.h5"
 
     h5_path = OUTPUT_DIR / h5_filename
-
-    # -----------------------------------------------------------------------
-    # Helper: read grid size N from mhd_config.f90
-    # -----------------------------------------------------------------------
-    def read_N_from_config(config_path: Path) -> int:
-        with open(config_path, "r") as f:
-            for line in f:
-                line = line.split("!")[0]
-                m = re.match(
-                    r"\s*integer\s*,\s*parameter\s*::\s*N\s*=\s*(\d+)",
-                    line, re.IGNORECASE
-                )
-                if m:
-                    return int(m.group(1))
-        raise ValueError(f"N not found in {config_path}")
 
     # -----------------------------------------------------------------------
     # Helper: load all primitive-variable snapshots from HDF5
@@ -210,7 +195,7 @@ try:
             )
 
         subprocess.run(
-            [str(EXECUTABLE), test_problem, str(fortran_seed),
+            [str(EXECUTABLE), test_problem, str(N), str(fortran_seed),
              str(OUTPUT_DIR) + os.sep, h5_filename],
             cwd=str(REPO_ROOT),   # run from repo root so relative paths in Fortran are stable
             check=True
@@ -228,8 +213,10 @@ try:
     # Plot
     # -----------------------------------------------------------------------
     def main() -> None:
-        N = read_N_from_config(SRC_DIR / "mhd_config.f90")
-        print(f"Grid size: N = {N}")
+        # Read N from the HDF5 output shape rather than the source file
+        with h5py.File(h5_path, "r") as f:
+            N_out = f["rho"][list(f["rho"].keys())[0]].shape[0]
+        print(f"Grid size: N = {N_out}")
 
         plot_all_fields(
             path        = h5_path,
