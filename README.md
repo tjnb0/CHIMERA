@@ -1,5 +1,5 @@
 # CHIMERA
-### Compressible, High-resolution Ideal MHD with Ensemble Randomisation Approach
+### Compressible, High-resolution Ideal MHD with an Ensemble Randomization Approach
 
 A finite-volume solver for the compressible ideal magnetohydrodynamics (MHD)
 equations in two spatial dimensions, written in modern Fortran. Developed as
