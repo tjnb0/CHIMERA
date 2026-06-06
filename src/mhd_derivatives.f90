@@ -12,122 +12,123 @@ module mhd_derivatives
     
 contains
 
-    subroutine compute_gradients(f, dx, nx, ny, f_dx, f_dy)
+    subroutine compute_gradients(f_pad, dx, nx, ny, f_dx, f_dy)
     !
-    !   Calculate the gradients of a field with periodic boundaries.
+    !   Compute cell-centred gradients using a ghost-cell padded field.
+    !   Physical cell (i,j) maps to f_pad(i+1, j+1). Ghost cells in rows/
+    !   columns 1 and nx+2/ny+2 encode the BC (periodic wrap, zero-gradient
+    !   outflow, or prescribed inflow) and are filled by fill_ghost_cells()
+    !   before this call. No special boundary cases are needed here.
     !
     !   Inputs:
-    !       - f  : (nx, ny) array;  field
-    !       - dx : scalar;          cell size
+    !       - f_pad : (nx+2, ny+2) padded field
+    !       - dx    : cell size
     !
     !   Outputs:
-    !       - f_dx : (nx, ny) array;  df/dx
-    !       - f_dy : (nx, ny) array;  df/dy
+    !       - f_dx  : (nx, ny) df/dx
+    !       - f_dy  : (nx, ny) df/dy
     !
-        integer, intent(in) :: nx, ny
-        real(8), intent(in) :: f(nx, ny)
-        real(8), intent(in) :: dx
+        integer, intent(in)  :: nx, ny
+        real(8), intent(in)  :: f_pad(nx+2, ny+2)
+        real(8), intent(in)  :: dx
         real(8), intent(out) :: f_dx(nx, ny), f_dy(nx, ny)
         real(8) :: inv_2dx
 
         inv_2dx = 1.0d0 / (2.0d0 * dx)
 
-        ! x-derivative (df/dx) 
-        f_dx(2:nx-1,:) = (f(3:nx,:) - f(1:nx-2,:)) * inv_2dx ! Interior points (cent. diff)
-        f_dx(1,:)      = (f(2,:)    - f(nx,:))     * inv_2dx ! Left boundary   (periodic)
-        f_dx(nx,:)     = (f(1,:)    - f(nx-1,:))   * inv_2dx ! Right boundary  (periodic)
-
-        ! y-derivative (df/dy) 
-        f_dy(:,2:ny-1) = (f(:,3:ny) - f(:,1:ny-2)) * inv_2dx ! Interior points (cent. diff)
-        f_dy(:,1)      = (f(:,2)    - f(:,ny))     * inv_2dx ! Lower boundary  (periodic)
-        f_dy(:,ny)     = (f(:,1)    - f(:,ny-1))   * inv_2dx ! Upper boundary  (periodic)
+        ! Central differences over the full domain - ghost cells handle all BCs.
+        ! Left neighbor of cell i   is f_pad(i,   j+1).
+        ! Right neighbor of cell i  is f_pad(i+2, j+1).
+        ! Bottom neighbor of cell j is f_pad(i+1, j  ).
+        ! Top neighbor of cell j    is f_pad(i+1, j+2).
+        f_dx = (f_pad(3:nx+2, 2:ny+1) - f_pad(1:nx,   2:ny+1)) * inv_2dx
+        f_dy = (f_pad(2:nx+1, 3:ny+2) - f_pad(2:nx+1, 1:ny  )) * inv_2dx
 
     end subroutine compute_gradients
 
 
-    subroutine apply_slope_limiter(f, dx, nx, ny, f_dx, f_dy)
-    ! 
-    !   Apply slope limiter to x- and y- directional slopes
+    subroutine apply_slope_limiter(f_pad, dx, nx, ny, f_dx, f_dy)
+    !
+    !   Apply Van Leer harmonic mean slope limiter using ghost-cell padded field.
+    !   Ghost cells encode the BC so no special boundary handling is needed.
     !
     !   Inputs:
-    !       - f  : scalar field (nx, ny)
-    !       - dx : grid spacing
-    !       - nx : x grid size
-    !       - ny : y grid size
+    !       - f_pad : (nx+2, ny+2) padded field
+    !       - dx    : grid spacing
     !
-    ! InOut:
-    !       - f_dx : slope to be limited (nx)
-    !       - f_dy : slope to be limited (ny)
+    !   InOut:
+    !       - f_dx  : (nx, ny) x-slope to be limited
+    !       - f_dy  : (nx, ny) y-slope to be limited
     !
-        integer, intent(in) :: nx, ny
-        real(8), intent(in) :: dx
-        real(8), intent(in) :: f(nx,ny)
-        real(8), intent(out) :: f_dx(nx,ny), f_dy(nx,ny)
-        integer :: i, j, ip1, im1, jp1, jm1
+        integer, intent(in)  :: nx, ny
+        real(8), intent(in)  :: dx
+        real(8), intent(in)  :: f_pad(nx+2, ny+2)
+        real(8), intent(out) :: f_dx(nx, ny), f_dy(nx, ny)
+        integer :: i, j
         real(8) :: dfR, dfL, dfRdfL, inv_dx, den
 
         inv_dx = 1.0d0 / dx
 
-        !$omp parallel do private(i,j,ip1,im1,dfR,dfL,dfRdfL)
+        ! x-direction slopes.
+        ! Physical cell (i,j) = f_pad(i+1, j+1).
+        ! Left neighbor  = f_pad(i,   j+1).
+        ! Right neighbor = f_pad(i+2, j+1).
+        !$omp parallel do private(i,j,dfR,dfL,dfRdfL,den)
         do j = 1, ny
             do i = 1, nx
-                ip1 = mod(i, nx) + 1
-                im1 = mod(i-2+nx, nx) + 1
-
-                dfL    = (f(i,j) - f(im1,j)) * inv_dx
-                dfR    = (f(ip1,j) - f(i,j)) * inv_dx
+                dfL    = (f_pad(i+1,j+1) - f_pad(i,  j+1)) * inv_dx
+                dfR    = (f_pad(i+2,j+1) - f_pad(i+1,j+1)) * inv_dx
                 dfRdfL = dfL * dfR
                 den    = dfL + dfR
                 if (dfRdfL <= 0.d0 .or. abs(den) < 1d-12) then
                     f_dx(i,j) = 0.d0
                 else
-                    f_dx(i,j) = (2.d0 * dfRdfL)/(dfL + dfR)
+                    f_dx(i,j) = (2.d0 * dfRdfL) / den
                 end if
             end do
         end do
+        !$omp end parallel do
 
-        !$omp parallel do private(i,j,jp1,jm1,dfR,dfL,dfRdfL)
+        ! y-direction slopes.
+        ! Bottom neighbor = f_pad(i+1, j  ).
+        ! Top neighbor    = f_pad(i+1, j+2).
+        !$omp parallel do private(i,j,dfR,dfL,dfRdfL,den)
         do j = 1, ny
             do i = 1, nx
-                jp1 = mod(j, ny) + 1
-                jm1 = mod(j-2+ny, ny) + 1
-
-                dfL = (f(i,j) - f(i,jm1)) * inv_dx
-                dfR = (f(i,jp1) - f(i,j)) * inv_dx
+                dfL    = (f_pad(i+1,j+1) - f_pad(i+1,j  )) * inv_dx
+                dfR    = (f_pad(i+1,j+2) - f_pad(i+1,j+1)) * inv_dx
                 dfRdfL = dfL * dfR
                 den    = dfL + dfR
                 if (dfRdfL <= 0.d0 .or. abs(den) < 1d-12) then
                     f_dy(i,j) = 0.d0
                 else
-                    f_dy(i,j) = (2.d0 * dfRdfL)/(dfL + dfR)
+                    f_dy(i,j) = (2.d0 * dfRdfL) / den
                 end if
             end do
         end do
+        !$omp end parallel do
+
     end subroutine apply_slope_limiter
 
 
     subroutine reconstruction(f, f_dx, f_dy, dx, nx, ny, f_XL, f_XR, f_YL, f_YR, &
                                    rho_or_p)
-    ! 
-    !   Performs MUSCL- or MOOD-scheme spatial extrapolation to cell faces using 
-    !   slope-limited derivatives
+    !
+    !   MUSCL/MOOD spatial extrapolation to cell faces.
+    !   cshift calls replaced with explicit BC-aware boundary handling
+    !   using the per-side flags from mhd_config.
     !
     !   Inputs:
     !       - f    : field (nx, ny)
     !       - f_dx : limited x-derivative of f, (nx, ny)
     !       - f_dy : limited y-derivative of f, (nx, ny)
     !       - dx   : cell size
-    !       - nx   : x grid size
-    !       - ny   : y grid size
     !
     !   Outputs:
-    !       - f_XL : extrapolated values on left  face in x-direction
-    !       - f_XR : extrapolated values on right face in x-direction
-    !       - f_YL : extrapolated values on left  face in y-direction
-    !       - f_YR : extrapolated values on right face in y-direction
-    !
-    !  Source:
-    !       - https://en.wikipedia.org/wiki/MUSCL_scheme
+    !       - f_XL : right state at the right x-face of each cell
+    !       - f_XR : left  state at the right x-face of each cell
+    !       - f_YL : right state at the top   y-face of each cell
+    !       - f_YR : left  state at the top   y-face of each cell
     !
         integer, intent(in)  :: nx, ny
         real(8), intent(in)  :: dx
@@ -140,65 +141,73 @@ contains
         real(8) :: localmin, localmax, eps
         integer :: i, j, ip1, im1, jp1, jm1
 
-        
-        ! 1. Use MUSCL reconstruction to make candidates
-        f_XR   = f + 0.5d0 * dx * f_dx ! Right face
-        f_YR   = f + 0.5d0 * dx * f_dy ! Top face
-        temp_x = f - 0.5d0 * dx * f_dx ! Left face (before shift)
-        temp_y = f - 0.5d0 * dx * f_dy ! Bottom face (before shift)
-        f_XL = cshift(temp_x, +1, 1)   ! Periodic shift right
-        f_YL = cshift(temp_y, +1, 2)   ! Periodic shift up
+        ! 1. MUSCL reconstruction candidates
+        f_XR   = f + 0.5d0 * dx * f_dx   ! left  state at right x-face
+        f_YR   = f + 0.5d0 * dx * f_dy   ! left  state at top   y-face
+        temp_x = f - 0.5d0 * dx * f_dx   ! right state at right x-face (pre-shift)
+        temp_y = f - 0.5d0 * dx * f_dy   ! right state at top   y-face (pre-shift)
 
-        ! 2. Optionally use MOOD reconstruction for better accuracy
+        ! X right state: interior uses right neighbor; boundary uses BC.
+        f_XL(1:nx-1, :) = temp_x(2:nx, :)
+        select case (bc_xhi)
+            case (BC_PERIODIC)
+                f_XL(nx, :) = temp_x(1, :)   ! wrap
+            case default                       ! outflow/fixed/inflow: zero-gradient
+                f_XL(nx, :) = f(nx, :)
+        end select
+
+        ! Y right state: interior uses upper neighbor; boundary uses BC.
+        f_YL(:, 1:ny-1) = temp_y(:, 2:ny)
+        select case (bc_yhi)
+            case (BC_PERIODIC)
+                f_YL(:, ny) = temp_y(:, 1)   ! wrap
+            case default
+                f_YL(:, ny) = f(:, ny)
+        end select
+
+        ! 2. Optional MOOD fallback to first order at troubled cells
         if (upgrade_2_MOOD) then
             !$OMP parallel do private(i,j,ip1,im1,jp1,jm1,localmin,localmax) &
-            !$OMP shared(f, f_XL, f_XR, f_YL, f_YR, nx, ny, rho_or_p)        
+            !$OMP shared(f, f_XL, f_XR, f_YL, f_YR, nx, ny, rho_or_p)
             do j = 1, ny
                 do i = 1, nx
-                    ! Compute indices for periodic neighbors (von Neumann stencil)
-                    ip1 = mod(i, nx) + 1      ! i+1
-                    im1 = mod(i-2, nx) + 1    ! i-1
-                    jp1 = mod(j, ny) + 1      ! j+1
-                    jm1 = mod(j-2, ny) + 1    ! j-1
+                    ! BC-aware neighbor indices for MOOD stencil
+                    select case (bc_xhi)
+                        case (BC_PERIODIC); ip1 = mod(i, nx) + 1
+                        case default;       ip1 = min(i + 1, nx)
+                    end select
+                    select case (bc_xlo)
+                        case (BC_PERIODIC); im1 = mod(i-2+nx, nx) + 1
+                        case default;       im1 = max(i - 1, 1)
+                    end select
+                    select case (bc_yhi)
+                        case (BC_PERIODIC); jp1 = mod(j, ny) + 1
+                        case default;       jp1 = min(j + 1, ny)
+                    end select
+                    select case (bc_ylo)
+                        case (BC_PERIODIC); jm1 = mod(j-2+ny, ny) + 1
+                        case default;       jm1 = max(j - 1, 1)
+                    end select
 
-                    ! Local min/max over cell and neighbors (wider stencil)
                     localmin = min(f(i,j), f(ip1,j), f(im1,j), f(i,jp1), f(i,jm1))
                     localmax = max(f(i,j), f(ip1,j), f(im1,j), f(i,jp1), f(i,jm1))
 
-                    ! Non-negative density/pressure
-                    if (rho_or_p) then
-                        localmin = max(0.1d-8, localmin)
-                    end if
+                    if (rho_or_p) localmin = max(0.1d-8, localmin)
 
-                    ! Check x-direction reconstructions
-                    if (f_XL(i,j) < localmin .or. f_XL(i,j) > localmax) then
-                        ! Fallback to first-order (Godunov-like)
-                        f_XL(i,j) = f(i,j)
-                    end if
-                    if (f_XR(i,j) < localmin .or. f_XR(i,j) > localmax) then
-                        f_XR(i,j) = f(i,j)
-                    end if
-
-                    ! Check y-direction reconstructions
-                    if (f_YL(i,j) < localmin .or. f_YL(i,j) > localmax) then
-                        f_YL(i,j) = f(i,j)
-                    end if
-                    if (f_YR(i,j) < localmin .or. f_YR(i,j) > localmax) then
-                        f_YR(i,j) = f(i,j)
-                    end if
-
+                    if (f_XL(i,j) < localmin .or. f_XL(i,j) > localmax) f_XL(i,j) = f(i,j)
+                    if (f_XR(i,j) < localmin .or. f_XR(i,j) > localmax) f_XR(i,j) = f(i,j)
+                    if (f_YL(i,j) < localmin .or. f_YL(i,j) > localmax) f_YL(i,j) = f(i,j)
+                    if (f_YR(i,j) < localmin .or. f_YR(i,j) > localmax) f_YR(i,j) = f(i,j)
                 end do
             end do
             !$omp end parallel do
         end if
 
-        ! For safer reconstruction
-        eps = 1e-8
+        ! Floor for density and pressure
+        eps = 1.0d-8
         if (rho_or_p) then
-            f_XL = max(f_XL, eps)
-            f_XR = max(f_XR, eps)
-            f_YL = max(f_YL, eps)
-            f_YR = max(f_YR, eps)
+            f_XL = max(f_XL, eps);  f_XR = max(f_XR, eps)
+            f_YL = max(f_YL, eps);  f_YR = max(f_YR, eps)
         end if
 
     end subroutine reconstruction
