@@ -31,6 +31,7 @@ for _dir in [OUTPUT_DIR, REPO_ROOT / "obj", REPO_ROOT / "mod"]:
 N_RUNS       = 1000
 SEED_START   = 1
 TEST_PROBLEM = "5"
+N            = 64    # Grid size (N x N cells)
 
 
 def run_one(run_id: int) -> None:
@@ -45,7 +46,7 @@ def run_one(run_id: int) -> None:
         )
 
     subprocess.run(
-        [str(EXECUTABLE), TEST_PROBLEM, str(seed),
+        [str(EXECUTABLE), TEST_PROBLEM, str(N), str(seed),
          str(OUTPUT_DIR) + os.sep, h5_name],
         cwd=str(REPO_ROOT),   # run from repo root so Fortran relative paths are stable
         check=True,
