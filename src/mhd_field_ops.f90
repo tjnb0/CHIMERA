@@ -18,9 +18,10 @@ contains
     !       bx(i,j) =  (Az(i,j) - Az(i,j-1)) / dx   = dAz/dy
     !       by(i,j) = -(Az(i,j) - Az(i-1,j)) / dx   = -dAz/dx
     !
-    !   The cshift periodic wraps are replaced with explicit BC-aware
-    !   boundary handling using flags from mhd_config.
-    !   For outflow: zero-gradient ghost -> Az_ghost = Az_boundary -> diff = 0.
+    !   For outflow boundaries: interior rows/columns are computed first so
+    !   the boundary row/column can copy the nearest interior value (linear
+    !   extrapolation of the update). Setting to 0.0 would freeze the
+    !   face-centred B at boundary cells and create artificial discontinuities.
     !
         integer, intent(in)  :: nx, ny
         real(8), intent(in)  :: dx, Az(nx, ny)
@@ -30,27 +31,27 @@ contains
         inv_dx = 1.0d0 / dx
 
         ! --- bx = dAz/dy (backward diff in y) ---
-        ! Interior: exact backward difference
+        ! Interior first so j=2 is ready for the ylo boundary copy
         bx(:, 2:ny) = (Az(:, 2:ny) - Az(:, 1:ny-1)) * inv_dx
 
-        ! ylo boundary (j=1): Az(i,0) from ghost
+        ! ylo boundary (j=1)
         select case (bc_ylo)
             case (BC_PERIODIC)
-                bx(:, 1) = (Az(:, 1) - Az(:, ny)) * inv_dx  ! wrap from top
-            case default  ! outflow: ghost = cell -> diff = 0
-                bx(:, 1) = 0.0d0
+                bx(:, 1) = (Az(:, 1) - Az(:, ny)) * inv_dx
+            case default  ! outflow: copy nearest interior update (linear extrapolation)
+                bx(:, 1) = bx(:, 2)
         end select
 
         ! --- by = -dAz/dx (backward diff in x) ---
-        ! Interior: exact backward difference
+        ! Interior first so i=2 is ready for the xlo boundary copy
         by(2:nx, :) = -(Az(2:nx, :) - Az(1:nx-1, :)) * inv_dx
 
-        ! xlo boundary (i=1): Az(0,j) from ghost
+        ! xlo boundary (i=1)
         select case (bc_xlo)
             case (BC_PERIODIC)
-                by(1, :) = -(Az(1, :) - Az(nx, :)) * inv_dx  ! wrap from right
-            case default  ! outflow: ghost = cell -> diff = 0
-                by(1, :) = 0.0d0
+                by(1, :) = -(Az(1, :) - Az(nx, :)) * inv_dx
+            case default  ! outflow: copy nearest interior update
+                by(1, :) = by(2, :)
         end select
 
     end subroutine compute_curl_2d

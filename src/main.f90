@@ -174,6 +174,45 @@ program main
         call update_conserved(Energy, flux_Energy_X, flux_Energy_Y, dx, dt, N, N)
         call constrained_transport(b_x, b_y, flux_By_X, flux_Bx_Y, dx, dt, N, N)
 
+        ! Outflow boundary flux correction for xlo and ylo.
+        ! update_conserved applies interior face fluxes but adds no incoming flux
+        ! from outside at non-periodic low-side boundaries. This block adds the
+        ! physical one-sided MHD flux at those faces, computed from the half-step
+        ! prime states (consistent with the interior flux computation).
+        ! xhi and yhi need no correction: the reconstruction ghost already set the
+        ! correct outflow flux at those faces in flux_F_X(N,:) and flux_F_Y(:,N).
+        if (bc_xlo /= BC_PERIODIC) then
+            block
+                real(8) :: halfB2_1(N), en_1(N)
+                halfB2_1 = 0.5d0*(Bx_prime(1,:)**2 + By_prime(1,:)**2)
+                en_1 = (P_prime(1,:) - halfB2_1)/(gamma - 1.d0) &
+                     + 0.5d0*rho_prime(1,:)*(vx_prime(1,:)**2 + vy_prime(1,:)**2) + halfB2_1
+                Mass(1,:)   = Mass(1,:)   + dt*dx * rho_prime(1,:)*vx_prime(1,:)
+                Momx(1,:)   = Momx(1,:)   + dt*dx * (rho_prime(1,:)*vx_prime(1,:)**2 &
+                              + P_prime(1,:) - Bx_prime(1,:)**2)
+                Momy(1,:)   = Momy(1,:)   + dt*dx * (rho_prime(1,:)*vx_prime(1,:)*vy_prime(1,:) &
+                              - Bx_prime(1,:)*By_prime(1,:))
+                Energy(1,:) = Energy(1,:) + dt*dx * ((en_1 + P_prime(1,:))*vx_prime(1,:) &
+                              - Bx_prime(1,:)*(Bx_prime(1,:)*vx_prime(1,:) + By_prime(1,:)*vy_prime(1,:)))
+            end block
+        end if
+
+        if (bc_ylo /= BC_PERIODIC) then
+            block
+                real(8) :: halfB2_1(N), en_1(N)
+                halfB2_1 = 0.5d0*(Bx_prime(:,1)**2 + By_prime(:,1)**2)
+                en_1 = (P_prime(:,1) - halfB2_1)/(gamma - 1.d0) &
+                     + 0.5d0*rho_prime(:,1)*(vx_prime(:,1)**2 + vy_prime(:,1)**2) + halfB2_1
+                Mass(:,1)   = Mass(:,1)   + dt*dx * rho_prime(:,1)*vy_prime(:,1)
+                Momy(:,1)   = Momy(:,1)   + dt*dx * (rho_prime(:,1)*vy_prime(:,1)**2 &
+                              + P_prime(:,1) - By_prime(:,1)**2)
+                Momx(:,1)   = Momx(:,1)   + dt*dx * (rho_prime(:,1)*vy_prime(:,1)*vx_prime(:,1) &
+                              - By_prime(:,1)*Bx_prime(:,1))
+                Energy(:,1) = Energy(:,1) + dt*dx * ((en_1 + P_prime(:,1))*vy_prime(:,1) &
+                              - By_prime(:,1)*(By_prime(:,1)*vy_prime(:,1) + Bx_prime(:,1)*vx_prime(:,1)))
+            end block
+        end if
+
         ! Update time
         t = t + dt
 
