@@ -23,6 +23,11 @@ alongside realised physics diagnostics (gamma, Mach number, plasma beta).
 
 ---
 
+## Example Outputs
+<img width="648" height="509" alt="Orszag_Tang_Vortex_Density" src="https://github.com/user-attachments/assets/9f13b17a-f63f-40b4-8e13-7e484bba0d00" />
+
+---
+
 ## Governing Equations
 
 CHIMERA advances the compressible MHD system as:
