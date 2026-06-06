@@ -30,7 +30,7 @@ OBJS = \
 	$(OBJDIR)/mhd_field_ops.o     \
 	$(OBJDIR)/mhd_change_states.o \
 	$(OBJDIR)/mhd_derivatives.o   \
-	$(OBJDIR)/mhd_ghost_bcs.o     \
+	$(OBJDIR)/mhd_bc.o     \
 	$(OBJDIR)/mhd_flux.o          \
 	$(OBJDIR)/mhd_init.o          \
 	$(OBJDIR)/main.o
@@ -68,7 +68,7 @@ $(OBJDIR)/mhd_change_states.o: $(SRCDIR)/mhd_change_states.f90 $(OBJDIR)/mhd_con
 $(OBJDIR)/mhd_derivatives.o: $(SRCDIR)/mhd_derivatives.f90 | $(OBJDIR)/ $(MODDIR)/
 	$(FC) $(FFLAGS) -J$(MODDIR) -c $< -o $@
 
-$(OBJDIR)/mhd_ghost_bcs.o: $(SRCDIR)/mhd_ghost_bcs.f90 $(OBJDIR)/mhd_config.o | $(OBJDIR)/ $(MODDIR)/
+$(OBJDIR)/mhd_bc.o: $(SRCDIR)/mhd_bc.f90 $(OBJDIR)/mhd_config.o | $(OBJDIR)/ $(MODDIR)/
 	$(FC) $(FFLAGS) -J$(MODDIR) -c $< -o $@
 
 $(OBJDIR)/mhd_flux.o: $(SRCDIR)/mhd_flux.f90 $(OBJDIR)/mhd_field_ops.o $(OBJDIR)/mhd_config.o | $(OBJDIR)/ $(MODDIR)/
@@ -80,7 +80,7 @@ $(OBJDIR)/mhd_init.o: $(SRCDIR)/mhd_init.f90 $(OBJDIR)/mhd_config.o $(OBJDIR)/mh
 $(OBJDIR)/main.o: $(SRCDIR)/main.f90 $(OBJDIR)/mhd_config.o $(OBJDIR)/mhd_init.o \
                   $(OBJDIR)/mhd_field_ops.o $(OBJDIR)/mhd_change_states.o \
                   $(OBJDIR)/mhd_derivatives.o $(OBJDIR)/mhd_flux.o \
-                  $(OBJDIR)/mhd_write_h5.o $(OBJDIR)/mhd_ghost_bcs.o | $(OBJDIR)/ $(MODDIR)/
+                  $(OBJDIR)/mhd_write_h5.o $(OBJDIR)/mhd_bc.o | $(OBJDIR)/ $(MODDIR)/
 	$(FC) $(FFLAGS) -J$(MODDIR) -c $< -o $@
 
 # Clean build artefacts (leaves outputs/ intact)

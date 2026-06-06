@@ -6,7 +6,7 @@ program main
     use mhd_derivatives
     use mhd_flux
     use mhd_write_h5
-    use mhd_ghost_BCs
+    use mhd_bc
 
     implicit none
     ! For trimmed tensors
@@ -70,24 +70,33 @@ program main
         end if
         dt = max(dt, 1e-12)
         
-        ! Calc gradients of primitive variables. Needed to build 
-        ! left/right boundary values for flux calculations
-        call compute_gradients(rho, dx, N, N, rho_dx, rho_dy)
-        call compute_gradients(vx,  dx, N, N, vx_dx,  vx_dy)
-        call compute_gradients(vy,  dx, N, N, vy_dx,  vy_dy)
-        call compute_gradients(P,   dx, N, N, P_dx,   P_dy)
-        call compute_gradients(Bx,  dx, N, N, Bx_dx,  Bx_dy)
-        call compute_gradients(By,  dx, N, N, By_dx,  By_dy)
+        ! Fill ghost cells for all primitives, then compute gradients.
+        ! fill_ghost_cells pads each N x N field to (N+2) x (N+2) using
+        ! BC flags from mhd_config. The padded arrays are used by both
+        ! compute_gradients and apply_slope_limiter below.
+        call fill_ghost_cells(rho, rho_pad)
+        call fill_ghost_cells(vx,  vx_pad)
+        call fill_ghost_cells(vy,  vy_pad)
+        call fill_ghost_cells(P,   P_pad)
+        call fill_ghost_cells(Bx,  Bx_pad)
+        call fill_ghost_cells(By,  By_pad)
+
+        call compute_gradients(rho_pad, dx, N, N, rho_dx, rho_dy)
+        call compute_gradients(vx_pad,  dx, N, N, vx_dx,  vx_dy)
+        call compute_gradients(vy_pad,  dx, N, N, vy_dx,  vy_dy)
+        call compute_gradients(P_pad,   dx, N, N, P_dx,   P_dy)
+        call compute_gradients(Bx_pad,  dx, N, N, Bx_dx,  Bx_dy)
+        call compute_gradients(By_pad,  dx, N, N, By_dx,  By_dy)
 
         ! Apply slope limiter to gradients if enabled. Helps limit
         ! oscillations near discontinuities
         if (useSlopeLimiting) then
-            call apply_slope_limiter(rho, dx, N, N, rho_dx, rho_dy)
-            call apply_slope_limiter(vx,  dx, N, N, vx_dx,  vx_dy)
-            call apply_slope_limiter(vy,  dx, N, N, vy_dx,  vy_dy)
-            call apply_slope_limiter(P,   dx, N, N, P_dx,   P_dy)
-            call apply_slope_limiter(Bx,  dx, N, N, Bx_dx,  Bx_dy)
-            call apply_slope_limiter(By,  dx, N, N, By_dx,  By_dy)
+            call apply_slope_limiter(rho_pad, dx, N, N, rho_dx, rho_dy)
+            call apply_slope_limiter(vx_pad,  dx, N, N, vx_dx,  vx_dy)
+            call apply_slope_limiter(vy_pad,  dx, N, N, vy_dx,  vy_dy)
+            call apply_slope_limiter(P_pad,   dx, N, N, P_dx,   P_dy)
+            call apply_slope_limiter(Bx_pad,  dx, N, N, Bx_dx,  Bx_dy)
+            call apply_slope_limiter(By_pad,  dx, N, N, By_dx,  By_dy)
         end if
 
         ! Extrapolate half-step in time (prediction step)
