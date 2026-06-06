@@ -37,10 +37,6 @@ module mhd_config
     integer :: BC_xlo, BC_xhi
     integer :: BC_ylo, BC_yhi
 
-    ! Legacy single-axis flags -- kept for backward compatibility during
-    ! BC refactor; will be removed once all setup routines are updated.
-    integer :: BC_x, BC_y
-
     ! Do not change
     real(8), parameter :: tOut        = 0.01d0                ! Interval for writing data to files
     real(8), parameter :: outInterval = 0.01d0 * tEnd         ! Interval to output time stamps
