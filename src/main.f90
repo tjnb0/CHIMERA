@@ -124,13 +124,18 @@ program main
                     - Bx*By*vy_dx + vx*P_dx + (gamma-2.d0) * (Bx*vx + By*vy) * Bx_dx    &
                     - By*Bx*vx_dy + (gamma * (P - 0.5d0*(Bx*Bx + By*By)) + Bx*Bx)*vy_dy &
                     + vy * P_dy + (gamma - 2.d0) * (Bx * vx + By * vy) * By_dy )
-        P_prime = max(P_prime, P_floor)
+        ! NOTE: P_prime floor is applied after the B predictions below so that
+        ! Bx_prime/By_prime can be used. Flooring before would use full-step B,
+        ! which is inconsistent with the half-step total pressure formulation.
 
         ! Bx prediction (induction equation for Bx)
         Bx_prime = Bx - 0.5d0 * dt * (-By * vx_dy + Bx * vy_dy + vy * Bx_dy - vx * By_dy)
 
-        ! By prediction (induction equation for Bx)
+        ! By prediction (induction equation for By)
         By_prime = By - 0.5d0 * dt * ( By * vx_dx - Bx * vy_dx - vy * Bx_dx + vx * By_dx)
+
+        ! floor P_prime (total pressure) via the predicted B fields to ensure pos. thermal P
+        P_prime = max(P_prime, 0.5d0*(Bx_prime*Bx_prime + By_prime*By_prime) + P_floor)
 
 
         ! Extrapolate in space to face centers

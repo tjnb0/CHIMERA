@@ -190,6 +190,7 @@ contains
         real(8) :: momx_avg(nx, ny), momy_avg(nx, ny), en_avg(nx, ny)
         real(8) :: Bx_avg(nx, ny), By_avg(nx, ny), P_avg(nx, ny)
         real(8) :: c_L2(nx, ny), c_R2(nx, ny), C_L(nx, ny), C_R(nx, ny), C(nx, ny)
+        real(8) :: p_th_L(nx, ny), p_th_R(nx, ny)  
 
         ! Compute total energy for left and right states
         !   - en = internal + kinetic + magnetic energy
@@ -198,8 +199,14 @@ contains
         !       - Magnetic: 0.5 * (Bx^2 + By^2)
         halfBL2  = 0.5d0 * (Bx_L*Bx_L + By_L*By_L)
         halfBR2  = 0.5d0 * (Bx_R*Bx_R + By_R*By_R)
-        en_L = (P_L-halfBL2)/(gamma-1.d0) + 0.5d0*rho_L*(vx_L*vx_L + vy_L*vy_L) + halfBL2
-        en_R = (P_R-halfBR2)/(gamma-1.d0) + 0.5d0*rho_R*(vx_R*vx_R + vy_R*vy_R) + halfBR2
+
+        ! Compute floored thermal pressures locally to prevent negative
+        ! thermal pressure during energy or underestimating wave speed
+        p_th_L = max(P_L - halfBL2, P_floor)
+        p_th_R = max(P_R - halfBR2, P_floor)
+
+        en_L = p_th_L/(gamma-1.d0) + 0.5d0*rho_L*(vx_L*vx_L + vy_L*vy_L) + halfBL2
+        en_R = p_th_R/(gamma-1.d0) + 0.5d0*rho_R*(vx_R*vx_R + vy_R*vy_R) + halfBR2
 
         ! Average states for primitive and conserved variables
         rho_avg  = 0.5d0 * (rho_L + rho_R)
@@ -225,9 +232,10 @@ contains
                     * inv_rho_avg
         flux_By     = (By_avg*momx_avg - Bx_avg*momy_avg) * inv_rho_avg
 
-        ! Estimate max local wavespeed
-        c_L2 = (gamma * (P_L - halfBL2) + 2.0d0 * halfBL2) / rho_L
-        c_R2 = (gamma * (P_R - halfBR2) + 2.0d0 * halfBR2) / rho_R
+        ! Estimate max local wavespeed using floored thermal pressures
+        ! so a near-zero or negative p_thermal cannot underestimate c_f
+        c_L2 = (gamma * p_th_L + 2.0d0 * halfBL2) / rho_L
+        c_R2 = (gamma * p_th_R + 2.0d0 * halfBR2) / rho_R
         C_L = sqrt( 0.5d0 * (c_L2 + abs(c_L2))) + abs(vx_L)
         C_R = sqrt( 0.5d0 * (c_R2 + abs(c_R2))) + abs(vx_R)
         C   = 0.5d0 * max(C_L, C_R) 

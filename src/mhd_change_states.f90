@@ -87,11 +87,10 @@ contains
         real(8), intent(out) :: rho(nx, ny), vx(nx, ny), vy(nx, ny), P(nx, ny)
         real(8) :: halfB2(nx, ny)
 
-        rho = Mass / vol
-        rho = max(rho, rho_floor)
 
-        vx  = Momx / Mass
-        vy  = Momy / Mass
+        rho = max(Mass / vol, rho_floor) ! apply safety check
+        vx  = Momx / (rho * vol)         ! use safe rho (not Mass) to get vel
+        vy  = Momy / (rho * vol)         ! use safe rho (not Mass) to get vel
         halfB2 = 0.5d0 * (Bx*Bx + By*By)
 
         !   P = (Energy/vol - K.E. - Mag. Energy) * (gamma-1) + Mag. Pressure
@@ -100,7 +99,15 @@ contains
         !     - Mag. Pressure = 0.5 * (Bx^2 + By^2)
         P = (Energy / vol - 0.5d0*rho*(vx*vx + vy*vy) - halfB2) &
           * (gamma - 1.d0) + halfB2
-        P   = max(P, P_floor)
+
+        ! Issue 2 fix: absolute floor first, then proportional floor.
+        ! At high Mach / low beta, thermal pressure is a small residual of
+        ! large numbers. The proportional floor ensures p is always a
+        ! meaningful fraction of the local kinetic + magnetic energy,
+        ! preventing cancellation errors from corrupting the solution.
+        ! e_floor_frac is tunable in mhd_config.f90.
+        P = max(P, P_floor)
+        P = max(P, halfB2 + e_floor_frac * (0.5d0*rho*(vx*vx + vy*vy) + halfB2))
         
 
     end subroutine get_primitive
