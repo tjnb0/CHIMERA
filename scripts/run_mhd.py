@@ -53,7 +53,7 @@ try:
         "1": ("Orszag-Tang Vortex",           "Orszag_Tang_Vortex",          "orszag_tang.h5"),
         "2": ("Kelvin-Helmholtz Instability", "Kelvin_Helmholtz_Instability","kelvin_helmholtz.h5"),
         "3": ("Field Loop Advection",         "Field_Loop_Advection",        "field_loop.h5"),
-        "4": ("Periodic MHD Rotor",           "Periodic_MHD_Rotor",          "mhd_rotor.h5"),
+        "4": ("MHD Rotor",                    "MHD_Rotor",                   "mhd_rotor.h5"),
         "5": ("Gaussian Random Field",        "Gaussian_Random_Field",       None),  # set below
     }
 

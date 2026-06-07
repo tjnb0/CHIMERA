@@ -45,7 +45,8 @@ module mhd_config
     real(8), parameter :: fourPi = 12.566370614359173d0       ! 4 * pi
     real(8), parameter :: boxsize    = 1.0d0                  ! Size of the simulation box
     real(8), parameter :: courant_fac = 0.3d0                 ! CFL safety factor
-    real(8), parameter :: P_floor   = 1.0d-12                 ! Minimum pressure floor
+    real(8), parameter :: P_floor   = 1.0d-12                 ! Minimum absolute pressure floor
     real(8), parameter :: rho_floor = 1.0d-12                 ! Minimum density floor
+    real(8), parameter :: e_floor_frac = 1.0d-10              ! Proportional P floor: p >= e_floor_frac*(KE + MagE)
 
 end module mhd_config
