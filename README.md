@@ -1,5 +1,5 @@
 # CHIMERA
-### Compressible, High-resolution Ideal MHD with an Ensemble Randomization Approach
+### Constrained-transport High-resolution Ideal MHD for Ensemble Randomization and Analysis
 
 A finite-volume solver for the compressible ideal magnetohydrodynamics (MHD)
 equations in two spatial dimensions, written in modern Fortran. Developed as
@@ -9,7 +9,7 @@ an independent project.
 
 ## Overview
 
-CHIMERA evolves the compressible ideal MHD equations in conservation form on
+CHIMERA evolves the compressible ideal MHD equations in conservative form on
 a uniform 2D Cartesian grid. The numerical scheme combines second-order
 MUSCL-Hancock reconstruction with a Rusanov (local Lax-Friedrichs) Riemann
 solver, and uses constrained transport to preserve the divergence-free
@@ -19,7 +19,7 @@ per side, supporting periodic, zero-gradient outflow, fixed, and driven inflow
 on each of the four domain edges independently.
 
 Output is written to HDF5, with each field stored as a sequence of snapshots
-alongside realised physics diagnostics (gamma, Mach number, plasma beta).
+alongside the realized physics parameters (gamma, Mach number, plasma beta).
 
 ---
 
@@ -49,10 +49,10 @@ by an ideal equation of state with adiabatic index gamma.
 
 | Component | Method |
 |-----------|--------|
-| Spatial discretisation | Cell-centred finite volume on a uniform Cartesian grid |
+| Spatial discretization | Cell-centred finite volume on a uniform Cartesian grid |
 | Time integration | Predictor-corrector (MUSCL-Hancock); CFL-limited adaptive timestep |
 | Reconstruction | 2nd-order MUSCL with MOOD fallback to 1st-order at troubled cells |
-| Slope limiting | Van Leer harmonic mean limiter (toggleable) |
+| Slope limiting | Van Leer mean limiter |
 | Riemann solver | Local Lax-Friedrichs / Rusanov |
 | Divergence control | Constrained transport (CT) on staggered face-centred B; div B monitored every step |
 | Parallelism | OpenMP on reconstruction and slope-limiting loops |
@@ -97,7 +97,7 @@ At each step CHIMERA:
 
 ## Test Problems
 
-CHIMERA ships with five built-in initial conditions selected via command-line:
+CHIMERA has five built-in initial conditions selected via command-line:
 
 | `problem_type` | Problem | BCs | Physics tested |
 |:-:|---------|-----|----------------|
@@ -106,9 +106,6 @@ CHIMERA ships with five built-in initial conditions selected via command-line:
 | 3 | **Field-loop advection** | Periodic | Accuracy of CT scheme; passive advection of a magnetic flux tube |
 | 4 | **MHD rotor** | Outflow (all sides) | High-density rotating disk; torsional Alfven waves, open boundaries |
 | 5 | **Monte Carlo / GRF ensemble** | Periodic | Statistical studies of compressible MHD turbulence with randomised ICs |
-
-Recommended resolutions: Orszag-Tang N=3000, KH N=1024, Advection N=1024,
-Rotor N=2000.
 
 ---
 
@@ -148,9 +145,9 @@ Rotor N=2000.
 ### Prerequisites
 
 - Fortran compiler: `gfortran >= 9` or Intel `ifx`/`ifort`
-- HDF5 library with Fortran bindings (e.g. `libhdf5-fortran-dev` on Debian/Ubuntu)
-- OpenMP (included with most compilers)
-- Python 3 with `h5py`, `numpy`, `matplotlib` (for scripts)
+- HDF5 library with Fortran bindings (e.g. `libhdf5-fortran-dev`)
+- OpenMP
+- Python 3 with `h5py`, `numpy`, `matplotlib`
 
 ### Build
 
@@ -166,14 +163,14 @@ Edit the `Makefile` to point to your HDF5 installation if needed.
 
 ```bash
 # Single run - Orszag-Tang vortex
-./mhd_sim 1 0 ./outputs/ orszag_tang.h5
+./mhd_sim 1 $grid_size 0 ./outputs/ orszag_tang.h5
 
 # MHD Rotor with outflow BCs
-./mhd_sim 4 0 ./outputs/ rotor.h5
+./mhd_sim 4 $grid_size 0 ./outputs/ rotor.h5
 
 # Monte Carlo ensemble (100 runs)
 for seed in $(seq 1 100); do
-    ./mhd_sim 5 $seed ./outputs/ mc_run_${seed}.h5
+    ./mhd_sim 5 $grid_size $seed ./outputs/ mc_run_${seed}.h5
 done
 ```
 
@@ -184,9 +181,9 @@ python scripts/run_mhd.py          # single run with interactive animation
 python scripts/run_mhd_MC.py       # full Monte Carlo ensemble
 ```
 
-**Command-line arguments:** `problem_type  seed  output_path  filename.h5`
+**Command-line arguments:** `problem_type  grid_size  seed  output_path  filename.h5`
 
-Grid resolution, end time, and scheme options are compile-time parameters
+End time and scheme options are compile-time parameters
 in `mhd_config.f90`.
 
 ---
@@ -197,19 +194,19 @@ Each side of the domain is assigned independently in the problem setup routine:
 
 ```fortran
 BC_xlo = BC_PERIODIC   ! left
-BC_xhi = BC_PERIODIC   ! right
-BC_ylo = BC_PERIODIC   ! bottom
-BC_yhi = BC_PERIODIC   ! top
+BC_xhi = BC_OUTFLOW    ! right
+BC_ylo = BC_FIXED      ! bottom
+BC_yhi = BC_INFLOW     ! top
 ```
 
 Available types defined in `mhd_config.f90`:
 
 | Constant | Value | Behaviour |
 |----------|-------|-----------|
-| `BC_PERIODIC` | 1 | Circular wrap (default for all periodic problems) |
-| `BC_OUTFLOW` | 2 | Zero-gradient outflow; wave exits cleanly |
+| `BC_PERIODIC` | 1 | Circular wrap |
+| `BC_OUTFLOW` | 2 | Zero-gradient outflow |
 | `BC_FIXED` | 3 | Prescribed ambient state via `f_ambient` argument |
-| `BC_INFLOW` | 4 | Driven inflow; intended for CME-type problems |
+| `BC_INFLOW` | 4 | Driven inflow (e.g., Coronal Mass Ejections) |
 
 ---
 
@@ -218,7 +215,7 @@ Available types defined in `mhd_config.f90`:
 Results are written to a single HDF5 file per run:
 
 ```
-/rho/SNAPSHOT1 ... SNAPSHOTn     - density              [N x N, float64]
+/rho/SNAPSHOT1 ... SNAPSHOTn     - density               [N x N, float64]
 /P/SNAPSHOT1   ... SNAPSHOTn     - thermal pressure p    [N x N, float64]
 /Bx/SNAPSHOT1  ... SNAPSHOTn     - x magnetic field
 /By/SNAPSHOT1  ... SNAPSHOTn     - y magnetic field
