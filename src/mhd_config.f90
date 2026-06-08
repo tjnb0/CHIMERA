@@ -49,4 +49,9 @@ module mhd_config
     real(8), parameter :: rho_floor = 1.0d-12                 ! Minimum density floor
     real(8), parameter :: e_floor_frac = 1.0d-10              ! Proportional P floor: p >= e_floor_frac*(KE + MagE)
 
+    ! Target parameters for GRF 
+    ! Negative = sample randomly.
+    real(8) :: target_M_s  = -1.0d0   ! Sonic Mach number override
+    real(8) :: target_beta = -1.0d0   ! Plasma beta override
+
 end module mhd_config

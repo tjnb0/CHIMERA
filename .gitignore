@@ -8,10 +8,21 @@ mhd_sim
 mhd_sim.exe
 a.out
 
+# Tests
+/tests/fortran/test_bcs
+/tests/fortran/test_change_states
+/tests/fortran/test_field_ops
+
 # Output data
 *.h5
 *.hdf5
 outputs/
+
+# Python
+__pycache__/
+*.pyc 
+*.pyo 
+.pytest_cache/
 
 # Editor/IDE
 .vscode/

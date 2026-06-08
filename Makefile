@@ -72,7 +72,7 @@ $(OBJDIR)/mhd_field_ops.o: $(SRCDIR)/mhd_field_ops.f90 $(OBJDIR)/mhd_config.o | 
 $(OBJDIR)/mhd_change_states.o: $(SRCDIR)/mhd_change_states.f90 $(OBJDIR)/mhd_config.o | $(OBJDIR)/ $(MODDIR)/
 	$(FC) $(FFLAGS) -J$(MODDIR) -c $< -o $@
 
-$(OBJDIR)/mhd_derivatives.o: $(SRCDIR)/mhd_derivatives.f90 | $(OBJDIR)/ $(MODDIR)/
+$(OBJDIR)/mhd_derivatives.o: $(SRCDIR)/mhd_derivatives.f90 $(OBJDIR)/mhd_config.o | $(OBJDIR)/ $(MODDIR)/
 	$(FC) $(FFLAGS) -J$(MODDIR) -c $< -o $@
 
 $(OBJDIR)/mhd_bc.o: $(SRCDIR)/mhd_bc.f90 $(OBJDIR)/mhd_config.o | $(OBJDIR)/ $(MODDIR)/

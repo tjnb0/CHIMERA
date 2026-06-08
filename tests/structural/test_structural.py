@@ -82,22 +82,38 @@ class TestHDF5Structure:
 
     def test_p_dataset_is_thermal_pressure(self, run_sim):
         """
-        The P dataset stores thermal pressure p, not total pressure P*.
-        p must be positive and strictly less than p + B^2/2 where B != 0.
+        The P dataset must store thermal pressure p = P_total - 0.5*B^2,
+        not total pressure P*.
+
+        Discrimination method: for the OT vortex the initial thermal
+        pressure is uniform at p_0 = 5/(12π) ≈ 0.133.  The mean
+        magnetic pressure over the periodic domain is
+        mean(B^2/2) = 1/(8π) ≈ 0.040, so mean total P* ≈ 0.173.
+
+        At the first snapshot (t ≈ tOut = 0.01), the flow has barely
+        evolved, so if P stores thermal pressure its domain mean should
+        still be close to 0.133 (<< 0.16).  If P accidentally stored
+        total pressure, the mean would be ~0.173 (>> 0.16).
         """
         h5 = run_sim(problem_type=1, N=N_TEST)
         with h5py.File(h5, "r") as f:
-            grp  = f["rho"]
-            keys = sorted(grp.keys(),
-                          key=lambda k: int(k.replace("SNAPSHOT", "")))
-            last = keys[-1]
-            P  = np.array(f["P"][last])
-            Bx = np.array(f["Bx"][last])
-            By = np.array(f["By"][last])
-        assert P.min() > 0.0, \
-            f"Thermal pressure not positive: min = {P.min():.3e}"
-        halfB2 = 0.5 * (Bx**2 + By**2)
-        mask = halfB2 > 1e-10
-        if mask.any():
-            assert np.all(P[mask] < P[mask] + halfB2[mask]), \
-                "P does not appear to be thermal pressure (should be < P + B^2/2)"
+            keys    = sorted(f["P"].keys(),
+                             key=lambda k: int(k.replace("SNAPSHOT", "")))
+            P_first = np.array(f["P"][keys[0]])
+            P_last  = np.array(f["P"][keys[-1]])
+
+        # Positivity (applies at all times)
+        assert P_first.min() > 0.0, \
+            f"Thermal pressure not positive at first snapshot: min = {P_first.min():.3e}"
+        assert P_last.min() > 0.0, \
+            f"Thermal pressure not positive at last snapshot: min = {P_last.min():.3e}"
+
+        # Domain-mean anchor: separates thermal from total pressure.
+        # Threshold 0.16 lies between p_0 ≈ 0.133 (thermal) and P*_0 ≈ 0.173 (total).
+        p_thermal_init = 5.0 / (12.0 * np.pi)   # ≈ 0.133
+        THRESHOLD      = 0.16
+        assert P_first.mean() < THRESHOLD, (
+            f"First-snapshot mean P = {P_first.mean():.4f} >= {THRESHOLD}. "
+            f"Expected near {p_thermal_init:.4f} for thermal pressure; "
+            f"mean total pressure would be ~0.173 — P may include B²/2."
+        )

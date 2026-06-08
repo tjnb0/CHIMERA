@@ -53,14 +53,29 @@ def run_sim(built_executable, tmp_path):
     Usage:
         h5 = run_sim(problem_type=1, N=32)
         h5 = run_sim(problem_type=5, N=64, seed=42, h5_name="mc.h5")
+
+        # GRF stress-test overrides (args 6 & 7 to the binary):
+        #   extra_args=[target_M_s, target_beta]
+        #   Pass -1 for either to keep random sampling for that parameter.
+        h5 = run_sim(problem_type=5, N=64, seed=1,
+                     extra_args=[5.0, -1.0])   # high-Mach, beta random
+        h5 = run_sim(problem_type=5, N=64, seed=1,
+                     extra_args=[-1.0, 0.1])   # M_s random, low-beta
     """
-    def _run(problem_type, N, seed=0, h5_name=None, timeout=180):
+    def _run(problem_type, N, seed=0, h5_name=None, timeout=180,
+             extra_args=None):
         if h5_name is None:
             h5_name = f"test_p{problem_type}_N{N}_s{seed}.h5"
         out_dir = str(tmp_path) + os.sep
+        cmd = [
+            str(built_executable), str(problem_type), str(N), str(seed),
+            out_dir, h5_name,
+        ]
+        if extra_args is not None:
+            cmd.extend(str(a) for a in extra_args)
+
         result = subprocess.run(
-            [str(built_executable), str(problem_type), str(N), str(seed),
-             out_dir, h5_name],
+            cmd,
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
@@ -68,7 +83,8 @@ def run_sim(built_executable, tmp_path):
         )
         if result.returncode != 0:
             pytest.fail(
-                f"Simulation failed (problem={problem_type}, N={N}, seed={seed})\n"
+                f"Simulation failed (problem={problem_type}, N={N}, seed={seed}, "
+                f"extra_args={extra_args})\n"
                 f"--- stdout ---\n{result.stdout}\n"
                 f"--- stderr ---\n{result.stderr}"
             )

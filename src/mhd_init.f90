@@ -245,6 +245,26 @@ contains
             h5_filename = "primitive_snaps.h5"
         end if
 
+        ! Arg 6: target_M_s (optional, GRF / problem 5 only).
+        ! Pass a negative value (e.g. -1) to keep the default random sampling.
+        if (nargs >= 6) then
+            call get_command_argument(6, arg_str)
+            read(arg_str, *, iostat=istat) target_M_s
+            if (istat /= 0) target_M_s = -1.0d0
+        else
+            target_M_s = -1.0d0
+        end if
+
+        ! Arg 7: target_beta (optional, GRF / problem 5 only).
+        ! Pass a negative value (e.g. -1) to keep the default random sampling.
+        if (nargs >= 7) then
+            call get_command_argument(7, arg_str)
+            read(arg_str, *, iostat=istat) target_beta
+            if (istat /= 0) target_beta = -1.0d0
+        else
+            target_beta = -1.0d0
+        end if
+
     end subroutine get_user_options
 
 
@@ -512,20 +532,30 @@ contains
         !   - gamma ~ 1.2: Approaching isothermal
         
         ! Sonic Mach number: M_s = V_0 / c_s
-        M_s = 10.0d0**(log10(0.2d0) + (log10(2.0d0) - log10(0.2d0)) * rand_vals(2))
-        M_s = min(max(M_s, 0.2d0), 2.0d0)
-        ! Sample log10(M_s) uniformly in [log10(0.1), log10(3.0)]
-        !   - ~33% in [0.2, 0.55)  : Subsonic
-        !   - ~33% in [0.55, 1.7)  : Transonic/sonic
-        !   - ~33% in [1.7, 2.0]   : Supersonic
-        
-        ! Plasma beta: beta = 2*P_gas / B^2 
-        beta_val = 10.0d0**(log10(0.5d0) + (log10(5.0d0) - log10(0.5d0)) * rand_vals(3))
-        beta_val = min(max(beta_val, 0.5d0), 5.0d0)
-        ! Sample log10(beta) uniformly in [log10(0.1), log10(5.0)]
-        !   - ~33% in [0.5, 0.7)   : Moderately to strongly magnetized
-        !   - ~33% in [0.7, 2.2)   : Moderate magnetization (near equipartition)
-        !   - ~33% in [2.2, 5.0]   : Weakly magnetized (gas pressure dominated)
+        ! rand_vals(2) is always consumed to keep RNG state consistent across calls.
+        if (target_M_s > 0.0d0) then
+            M_s = target_M_s                                   ! stress-test override
+        else
+            M_s = 10.0d0**(log10(0.2d0) + (log10(2.0d0) - log10(0.2d0)) * rand_vals(2))
+            M_s = min(max(M_s, 0.2d0), 2.0d0)
+            ! Sample log10(M_s) uniformly in [log10(0.2), log10(2.0)]
+            !   - ~33% in [0.2, 0.55)  : Subsonic
+            !   - ~33% in [0.55, 1.7)  : Transonic/sonic
+            !   - ~33% in [1.7, 2.0]   : Supersonic
+        end if
+
+        ! Plasma beta: beta = 2*P_gas / B^2
+        ! rand_vals(3) is always consumed to keep RNG state consistent across calls.
+        if (target_beta > 0.0d0) then
+            beta_val = target_beta                             ! stress-test override
+        else
+            beta_val = 10.0d0**(log10(0.5d0) + (log10(5.0d0) - log10(0.5d0)) * rand_vals(3))
+            beta_val = min(max(beta_val, 0.5d0), 5.0d0)
+            ! Sample log10(beta) uniformly in [log10(0.5), log10(5.0)]
+            !   - ~33% in [0.5, 0.7)   : Moderately to strongly magnetized
+            !   - ~33% in [0.7, 2.2)   : Moderate magnetization (near equipartition)
+            !   - ~33% in [2.2, 5.0]   : Weakly magnetized (gas pressure dominated)
+        end if
         
         ! STEP 2: Fix normalized base state
         rho_mean = 1.0d0
