@@ -21,13 +21,18 @@ module mhd_config
     ! - Advection: N = 1024, tEnd = 1.0
     ! - MHD Rotor: N = 2000, tEnd = 0.9
 
-    ! Advanced parameters
-    logical, parameter :: useSlopeLimiting = .true.  ! Enable/disable slope limiting
 
+    !--- Advanced parameters ---
     ! Slope limiter selection (no effect when useSlopeLimiting = .false.)
-    integer, parameter :: LIMITER_VAN_LEER = 1                ! Van Leer harmonic mean; robust / more diffuse
+    logical, parameter :: useSlopeLimiting = .true.  ! Enable/disable slope limiting
+    integer, parameter :: LIMITER_VAN_LEER = 1                ! Van Leer harmonic mean; robust / more diffusive
     integer, parameter :: LIMITER_MC       = 2                ! Monotonized central; less diffuse
     integer, parameter :: slope_limiter    = LIMITER_MC       ! slope limiter selection
+
+    ! Riemann solver selection
+    integer, parameter :: RIEMANN_RUSANOV = 1                 ! local Lax-Friedrichs; robust / more diffusive
+    integer, parameter :: RIEMANN_HLLD    = 2                 ! Miyoshi & Kusano (2005); resolves MHD waves
+    integer, parameter :: riemann_solver  = RIEMANN_RUSANOV   ! Riemann solver selection
     logical, parameter :: upgrade_2_MOOD   = .true.           ! MOOD reconstruction fallback
 
     ! Boundary condition type constants

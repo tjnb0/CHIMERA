@@ -138,10 +138,8 @@ contains
     subroutine compute_fluxes(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,   &
                               Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,            &
                               flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
-    !   Compute numerical fluxes for mass, momentum, energy, and transverse magnetic 
-    !   field (By) across cell faces. Uses the local Lax-Friedrichs Rusanov flux. 
-    !   Basically this averages left and right states and adds a diffusive term 
-    !   that's proportional to the maximum local wavespeed to make it stable
+    !   Routes to rusanov_flux or hlld_flux based on riemann_solver selected
+    !   in mhd_config.f90.  .
     !
     !   Inputs:
     !       - rho_L, rho_R : Left and right densities       [nx, ny]
@@ -160,37 +158,69 @@ contains
     !       - flux_Energy : Flux of energy                        [nx, ny]
     !       - flux_By     : Flux of transverse magnetic field, By [nx, ny]
     !
-    !  Method:
+        integer, intent(in)    :: nx, ny
+        real(8), intent(inout) :: rho_L(nx, ny), rho_R(nx, ny)
+        real(8), intent(in)    :: vx_L(nx, ny), vx_R(nx, ny)
+        real(8), intent(in)    :: vy_L(nx, ny), vy_R(nx, ny)
+        real(8), intent(inout) :: P_L(nx, ny), P_R(nx, ny)
+        real(8), intent(in)    :: Bx_L(nx, ny), Bx_R(nx, ny)
+        real(8), intent(in)    :: By_L(nx, ny), By_R(nx, ny)
+        real(8), intent(in)    :: gamma
+        real(8), intent(out)   :: flux_Mass(nx, ny), flux_Momx(nx, ny), flux_Momy(nx, ny)
+        real(8), intent(out)   :: flux_Energy(nx, ny), flux_By(nx, ny)
+
+        select case (riemann_solver)
+        case (RIEMANN_RUSANOV)
+            call rusanov_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, &
+                              Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,           &
+                              flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
+        case (RIEMANN_HLLD)
+            call hlld_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,    &
+                           Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,              &
+                           flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
+        end select
+
+    end subroutine compute_fluxes
+
+
+    ! =========================================================================
+    ! Private Riemann solvers
+    ! =========================================================================
+    subroutine rusanov_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,   &
+                            Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,             &
+                            flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
+    !   Local Lax-Friedrichs (Rusanov) flux.
+    !
+    !   Method:
     !       1. Compute energies of left and right states.
     !       2. Compute averaged states of primitive and conserved quantities.
     !       3. Evaluate fluxes from the star states.
     !       4. Estimate local maximum wavespeed using fast magnetosonic speed.
     !       5. Apply a stabilizing diffusive term proportional to the wavespeed.
     !
-    !  Notes:
+    !   Notes:
     !       - Assumes ideal MHD equations in 2D.
-    !       - Uses local Rusanov (LF) flux.
-    !       - Magnetic field is split into Bx and By components.
+    !       - Magnetic field is split into Bx (normal) and By (tangential) components.
+    !         main.f90 passes rotated arguments for y-direction faces.
     !
-        integer, intent(in) :: nx, ny
+        integer, intent(in)    :: nx, ny
         real(8), intent(inout) :: rho_L(nx, ny), rho_R(nx, ny)
-        real(8), intent(in) :: vx_L(nx, ny), vx_R(nx, ny)
-        real(8), intent(in) :: vy_L(nx, ny), vy_R(nx, ny)
+        real(8), intent(in)    :: vx_L(nx, ny), vx_R(nx, ny)
+        real(8), intent(in)    :: vy_L(nx, ny), vy_R(nx, ny)
         real(8), intent(inout) :: P_L(nx, ny), P_R(nx, ny)
-        real(8), intent(in) :: Bx_L(nx, ny), Bx_R(nx, ny)
-        real(8), intent(in) :: By_L(nx, ny), By_R(nx, ny)
-        real(8), intent(in) :: gamma
+        real(8), intent(in)    :: Bx_L(nx, ny), Bx_R(nx, ny)
+        real(8), intent(in)    :: By_L(nx, ny), By_R(nx, ny)
+        real(8), intent(in)    :: gamma
+        real(8), intent(out)   :: flux_Mass(nx, ny), flux_Momx(nx, ny), flux_Momy(nx, ny)
+        real(8), intent(out)   :: flux_Energy(nx, ny), flux_By(nx, ny)
 
-        real(8), intent(out) :: flux_Mass(nx, ny), flux_Momx(nx, ny), flux_Momy(nx, ny)
-        real(8), intent(out) :: flux_Energy(nx, ny), flux_By(nx, ny)
-
-        ! Locals arrays
+        ! Local arrays
         real(8) :: en_L(nx, ny), en_R(nx, ny), halfBL2(nx, ny), halfBR2(nx, ny)
         real(8) :: rho_avg(nx, ny), inv_rho_avg(nx, ny)
         real(8) :: momx_avg(nx, ny), momy_avg(nx, ny), en_avg(nx, ny)
         real(8) :: Bx_avg(nx, ny), By_avg(nx, ny), P_avg(nx, ny)
         real(8) :: c_L2(nx, ny), c_R2(nx, ny), C_L(nx, ny), C_R(nx, ny), C(nx, ny)
-        real(8) :: p_th_L(nx, ny), p_th_R(nx, ny)  
+        real(8) :: p_th_L(nx, ny), p_th_R(nx, ny)
 
         ! Compute total energy for left and right states
         !   - en = internal + kinetic + magnetic energy
@@ -209,13 +239,13 @@ contains
         en_R = p_th_R/(gamma-1.d0) + 0.5d0*rho_R*(vx_R*vx_R + vy_R*vy_R) + halfBR2
 
         ! Average states for primitive and conserved variables
-        rho_avg  = 0.5d0 * (rho_L + rho_R)
+        rho_avg     = 0.5d0 * (rho_L + rho_R)
         inv_rho_avg = 1.0d0 / rho_avg
-        momx_avg = 0.5d0 * (rho_L*vx_L + rho_R*vx_R)
-        momy_avg = 0.5d0 * (rho_L*vy_L + rho_R*vy_R)
-        en_avg   = 0.5d0 * (en_L + en_R)
-        Bx_avg   = 0.5d0 * (Bx_L + Bx_R)
-        By_avg   = 0.5d0 * (By_L + By_R)
+        momx_avg    = 0.5d0 * (rho_L*vx_L + rho_R*vx_R)
+        momy_avg    = 0.5d0 * (rho_L*vy_L + rho_R*vy_R)
+        en_avg      = 0.5d0 * (en_L + en_R)
+        Bx_avg      = 0.5d0 * (Bx_L + Bx_R)
+        By_avg      = 0.5d0 * (By_L + By_R)
 
         ! Calculate avg pressure using ideal MHD relation
         P_avg = (gamma - 1.d0) * (en_avg &
@@ -238,7 +268,7 @@ contains
         c_R2 = (gamma * p_th_R + 2.0d0 * halfBR2) / rho_R
         C_L = sqrt( 0.5d0 * (c_L2 + abs(c_L2))) + abs(vx_L)
         C_R = sqrt( 0.5d0 * (c_R2 + abs(c_R2))) + abs(vx_R)
-        C   = 0.5d0 * max(C_L, C_R) 
+        C   = 0.5d0 * max(C_L, C_R)
 
         ! Add stabilizing diffusive term (Rusanov/Lax-Friedrichs) to reduce oscillations
         flux_Mass   = flux_Mass   - C * (rho_L      - rho_R)
@@ -247,7 +277,14 @@ contains
         flux_Energy = flux_Energy - C * (en_L       - en_R)
         flux_By     = flux_By     - C * (By_L       - By_R)
 
-    end subroutine compute_fluxes
+    end subroutine rusanov_flux
 
+
+    ! subroutine hlld_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,    &
+    !                      Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,              &
+    !                      flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
+    ! !   HLLD Riemann solver -- Miyoshi & Kusano (2005), J. Comput. Phys. 208, 315-344.
+    ! !   To be implemented.
+    ! end subroutine hlld_flux
 
 end module mhd_flux
