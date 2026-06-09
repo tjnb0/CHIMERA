@@ -49,8 +49,11 @@ contains
 
     subroutine apply_slope_limiter(f_pad, dx, nx, ny, f_dx, f_dy)
     !
-    !   Apply Van Leer harmonic mean slope limiter using ghost-cell padded field.
+    !   Apply slope limiter using ghost-cell padded field.
     !   Ghost cells encode the BC so no special boundary handling is needed.
+    !   Limiter selected at build time via slope_limiter in mhd_config.f90:
+    !     LIMITER_VAN_LEER  -- harmonic mean (robust, more diffusive)
+    !     LIMITER_MC        -- monotonized central (sharper, still TVD)
     !
     !   Inputs:
     !       - f_pad : (nx+2, ny+2) padded field
@@ -83,7 +86,14 @@ contains
                 if (dfRdfL <= 0.d0 .or. abs(den) < 1d-12) then
                     f_dx(i,j) = 0.d0
                 else
-                    f_dx(i,j) = (2.d0 * dfRdfL) / den
+                    select case (slope_limiter)
+                    case (LIMITER_VAN_LEER)
+                        f_dx(i,j) = (2.d0 * dfRdfL) / den
+                    case (LIMITER_MC)
+                        ! den = dfL + dfR; 0.5*|den| is the centred-difference term.
+                        f_dx(i,j) = sign(1.d0, dfL) * &
+                                    min(2.d0*abs(dfL), 2.d0*abs(dfR), 0.5d0*abs(den))
+                    end select
                 end if
             end do
         end do
@@ -102,7 +112,13 @@ contains
                 if (dfRdfL <= 0.d0 .or. abs(den) < 1d-12) then
                     f_dy(i,j) = 0.d0
                 else
-                    f_dy(i,j) = (2.d0 * dfRdfL) / den
+                    select case (slope_limiter)
+                    case (LIMITER_VAN_LEER)
+                        f_dy(i,j) = (2.d0 * dfRdfL) / den
+                    case (LIMITER_MC)
+                        f_dy(i,j) = sign(1.d0, dfL) * &
+                                    min(2.d0*abs(dfL), 2.d0*abs(dfR), 0.5d0*abs(den))
+                    end select
                 end if
             end do
         end do

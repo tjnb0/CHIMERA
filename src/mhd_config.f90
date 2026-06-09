@@ -23,7 +23,12 @@ module mhd_config
 
     ! Advanced parameters
     logical, parameter :: useSlopeLimiting = .true.  ! Enable/disable slope limiting
-    logical, parameter :: upgrade_2_MOOD   = .true.  ! MOOD reconstruction fallback
+
+    ! Slope limiter selection (no effect when useSlopeLimiting = .false.)
+    integer, parameter :: LIMITER_VAN_LEER = 1                ! Van Leer harmonic mean; robust / more diffuse
+    integer, parameter :: LIMITER_MC       = 2                ! Monotonized central; less diffuse
+    integer, parameter :: slope_limiter    = LIMITER_MC       ! slope limiter selection
+    logical, parameter :: upgrade_2_MOOD   = .true.           ! MOOD reconstruction fallback
 
     ! Boundary condition type constants
     integer, parameter :: BC_PERIODIC = 1  ! Periodic (wrap-around)
