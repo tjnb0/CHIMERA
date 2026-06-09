@@ -180,7 +180,7 @@ contains
     !
     !   Parse command-line arguments.
     !
-    !   Usage: ./mhd_sim <problem_type> <N> <seed> [output_path] [h5_filename]
+    !   Usage: ./chimera <problem_type> <N> <seed> [output_path] [h5_filename]
     !
     !   Required:
     !       problem_type : 1=Orszag-Tang, 2=KH, 3=Field Loop, 4=Rotor, 5=MC
@@ -197,7 +197,7 @@ contains
         nargs = command_argument_count()
 
         if (nargs < 3) then
-            print *, "ERROR: Usage: ./mhd_sim <problem_type> <N> <seed> [output_path] [h5_filename]"
+            print *, "ERROR: Usage: ./chimera <problem_type> <N> <seed> [output_path] [h5_filename]"
             print *, "  problem_type : 1=Orszag-Tang 2=KH 3=Field-Loop 4=Rotor 5=MC"
             print *, "  N            : grid size (integer >= 4)"
             print *, "  seed         : random seed (integer)"

@@ -13,13 +13,13 @@ import os
 #   ├── mod/          – compiled modules   (auto-created)
 #   ├── outputs/      – simulation output  (auto-created)
 #   ├── Makefile
-#   └── mhd_sim[.exe]
+#   └── chimera[.exe]
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR = Path(__file__).resolve().parent        # CHIMERA/scripts/
 REPO_ROOT  = SCRIPT_DIR.parent                      # CHIMERA/
 OUTPUT_DIR = REPO_ROOT / "outputs"
-EXECUTABLE = REPO_ROOT / ("mhd_sim.exe" if os.name == "nt" else "mhd_sim")
+EXECUTABLE = REPO_ROOT / ("chimera.exe" if os.name == "nt" else "chimera")
 
 # Auto-create build and output directories so a fresh clone never crashes
 for _dir in [OUTPUT_DIR, REPO_ROOT / "obj", REPO_ROOT / "mod"]:
