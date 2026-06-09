@@ -2,7 +2,7 @@
 Shared pytest fixtures for CHIMERA tests.
 
 Fixtures:
-  built_executable  -- compiles once per session, returns Path to mhd_sim
+  built_executable  -- compiles once per session, returns Path to chimera
   run_sim           -- function-scoped: run the binary, return HDF5 path
   ot_128_h5         -- session-scoped: run OT at N=128, return HDF5 path
                        (used by validation tests; only executes when needed)
@@ -14,7 +14,7 @@ import pytest
 from pathlib import Path
 
 REPO_ROOT  = Path(__file__).resolve().parent.parent
-EXECUTABLE = REPO_ROOT / ("mhd_sim.exe" if os.name == "nt" else "mhd_sim")
+EXECUTABLE = REPO_ROOT / ("chimera.exe" if os.name == "nt" else "chimera")
 
 
 def pytest_configure(config):
