@@ -163,14 +163,14 @@ Edit the `Makefile` to point to your HDF5 installation if needed.
 
 ```bash
 # Single run - Orszag-Tang vortex
-./mhd_sim 1 $grid_size 0 ./outputs/ orszag_tang.h5
+./chimera 1 $grid_size 0 ./outputs/ orszag_tang.h5
 
 # MHD Rotor with outflow BCs
-./mhd_sim 4 $grid_size 0 ./outputs/ rotor.h5
+./chimera 4 $grid_size 0 ./outputs/ rotor.h5
 
 # Monte Carlo ensemble (100 runs)
 for seed in $(seq 1 100); do
-    ./mhd_sim 5 $grid_size $seed ./outputs/ mc_run_${seed}.h5
+    ./chimera 5 $grid_size $seed ./outputs/ mc_run_${seed}.h5
 done
 ```
 

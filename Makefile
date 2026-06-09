@@ -7,7 +7,7 @@ MODDIR = mod
 OBJDIR = obj
 SRCDIR = src
 OUTDIR = outputs
-EXE    = mhd_sim
+EXE    = chimera
 
 # HDF5 linking flags
 HDF5_LIBS = -L/usr/lib64 -lhdf5_fortran -lhdf5

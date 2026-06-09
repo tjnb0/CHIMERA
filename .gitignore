@@ -4,8 +4,8 @@
 *.smod
 
 # Executables
-mhd_sim
-mhd_sim.exe
+chimera
+chimera.exe
 a.out
 
 # Tests
