@@ -30,18 +30,25 @@ OBJS = \
 	$(OBJDIR)/mhd_field_ops.o     \
 	$(OBJDIR)/mhd_change_states.o \
 	$(OBJDIR)/mhd_derivatives.o   \
-	$(OBJDIR)/mhd_bc.o     \
+	$(OBJDIR)/mhd_bc.o            \
 	$(OBJDIR)/mhd_flux.o          \
 	$(OBJDIR)/mhd_init.o          \
 	$(OBJDIR)/main.o
 
-# ── Targets ────────────────────────────────────────────────────────────────
+# Test executables (no HDF5 required)
+TESTDIR   = tests/fortran
+TEST_EXES = \
+	$(TESTDIR)/test_change_states \
+	$(TESTDIR)/test_field_ops     \
+	$(TESTDIR)/test_bcs
 
-.PHONY: all clean
+# -- Targets -----------------------------------------------------------------
+
+.PHONY: all clean tests
 
 all: $(EXE)$(EXE_SUFFIX)
 
-# Directory creation — order-only prerequisites.
+# Directory creation - order-only prerequisites.
 # Make checks these exist before any rule that lists them after |
 # but does not use their timestamps to decide whether to rebuild.
 $(OBJDIR)/ $(MODDIR)/ $(OUTDIR)/:
@@ -51,7 +58,7 @@ $(OBJDIR)/ $(MODDIR)/ $(OUTDIR)/:
 $(EXE)$(EXE_SUFFIX): $(OBJS)
 	$(FC) $(FFLAGS) -J$(MODDIR) -o $@ $^ $(HDF5_LIBS)
 
-# ── Compile rules (| means order-only: directory must exist, not timestamped) ──
+# -- Compile rules (| means order-only: directory must exist, not timestamped) --
 
 $(OBJDIR)/mhd_config.o: $(SRCDIR)/mhd_config.f90 | $(OBJDIR)/ $(MODDIR)/
 	$(FC) $(FFLAGS) -J$(MODDIR) -c $< -o $@
@@ -65,7 +72,7 @@ $(OBJDIR)/mhd_field_ops.o: $(SRCDIR)/mhd_field_ops.f90 $(OBJDIR)/mhd_config.o | 
 $(OBJDIR)/mhd_change_states.o: $(SRCDIR)/mhd_change_states.f90 $(OBJDIR)/mhd_config.o | $(OBJDIR)/ $(MODDIR)/
 	$(FC) $(FFLAGS) -J$(MODDIR) -c $< -o $@
 
-$(OBJDIR)/mhd_derivatives.o: $(SRCDIR)/mhd_derivatives.f90 | $(OBJDIR)/ $(MODDIR)/
+$(OBJDIR)/mhd_derivatives.o: $(SRCDIR)/mhd_derivatives.f90 $(OBJDIR)/mhd_config.o | $(OBJDIR)/ $(MODDIR)/
 	$(FC) $(FFLAGS) -J$(MODDIR) -c $< -o $@
 
 $(OBJDIR)/mhd_bc.o: $(SRCDIR)/mhd_bc.f90 $(OBJDIR)/mhd_config.o | $(OBJDIR)/ $(MODDIR)/
@@ -83,8 +90,35 @@ $(OBJDIR)/main.o: $(SRCDIR)/main.f90 $(OBJDIR)/mhd_config.o $(OBJDIR)/mhd_init.o
                   $(OBJDIR)/mhd_write_h5.o $(OBJDIR)/mhd_bc.o | $(OBJDIR)/ $(MODDIR)/
 	$(FC) $(FFLAGS) -J$(MODDIR) -c $< -o $@
 
-# Clean build artefacts (leaves outputs/ intact)
+# -- Test rules --------------------------------------------------------------
+
+tests: $(TEST_EXES)
+
+$(TESTDIR)/test_change_states: $(TESTDIR)/test_change_states.f90 \
+		$(OBJDIR)/mhd_config.o $(OBJDIR)/mhd_change_states.o | $(TESTDIR)/
+	$(FC) $(FFLAGS) -J$(MODDIR) -o $@ $< \
+		$(OBJDIR)/mhd_config.o $(OBJDIR)/mhd_change_states.o
+
+$(TESTDIR)/test_field_ops: $(TESTDIR)/test_field_ops.f90 \
+		$(OBJDIR)/mhd_config.o $(OBJDIR)/mhd_field_ops.o \
+		$(OBJDIR)/mhd_derivatives.o | $(TESTDIR)/
+	$(FC) $(FFLAGS) -J$(MODDIR) -o $@ $< \
+		$(OBJDIR)/mhd_config.o $(OBJDIR)/mhd_field_ops.o \
+		$(OBJDIR)/mhd_derivatives.o
+
+$(TESTDIR)/test_bcs: $(TESTDIR)/test_bcs.f90 \
+		$(OBJDIR)/mhd_config.o $(OBJDIR)/mhd_bc.o | $(TESTDIR)/
+	$(FC) $(FFLAGS) -J$(MODDIR) -o $@ $< \
+		$(OBJDIR)/mhd_config.o $(OBJDIR)/mhd_bc.o
+
+$(TESTDIR)/:
+	@mkdir -p $@
+
+# -- Clean -------------------------------------------------------------------
+
+# Leaves outputs/ intact
 clean:
 	$(RM) $(EXE)$(EXE_SUFFIX)
+	$(RM) $(TEST_EXES)
 	@if [ -d $(OBJDIR) ]; then $(RM) $(OBJDIR)/*.o;   fi
 	@if [ -d $(MODDIR) ]; then $(RM) $(MODDIR)/*.mod; fi
