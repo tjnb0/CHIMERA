@@ -52,7 +52,7 @@ by an ideal equation of state with adiabatic index gamma.
 | Spatial discretization | Cell-centred finite volume on a uniform Cartesian grid |
 | Time integration | Predictor-corrector (MUSCL-Hancock); CFL-limited adaptive timestep |
 | Reconstruction | 2nd-order MUSCL with MOOD fallback to 1st-order at troubled cells |
-| Slope limiting | Van Leer mean limiter |
+| Slope limiting | Monotonized central or Van Leer mean limiter |
 | Riemann solver | Local Lax-Friedrichs / Rusanov |
 | Divergence control | Constrained transport (CT) on staggered face-centred B; div B monitored every step |
 | Parallelism | OpenMP on reconstruction and slope-limiting loops |
@@ -62,7 +62,7 @@ by an ideal equation of state with adiabatic index gamma.
 
 At each step CHIMERA:
 1. Fills ghost cells for all six primitive fields using the per-side BC flags.
-2. Computes BC-aware gradients and applies the Van Leer slope limiter.
+2. Computes BC-aware gradients and applies the monotonized central or Van Leer slope limiter.
 3. Predicts primitive variables half a timestep forward (MUSCL-Hancock prediction).
 4. Reconstructs left/right face states with MOOD fallback and a thermal pressure
    positivity check to prevent unphysical states in high-field regions.
@@ -76,7 +76,7 @@ At each step CHIMERA:
 - **MUSCL-Hancock predictor-corrector** - second-order accurate in space and time
 - **MOOD reconstruction** - per-cell fallback to first order where reconstructed
   values exceed stencil bounds or implied thermal pressure falls below the floor
-- **Van Leer slope limiter** - toggled via `useSlopeLimiting` in `mhd_config.f90`
+- **Slope limiter** - Monotonized central or Van Leer toggled in `mhd_config.f90`
 - **Constrained transport** - staggered face-centred B updated via discrete curl
   of Ez; div B monitored and printed each timestep
 - **Fast magnetosonic CFL condition** - timestep limited by `c_f + |v|` with a
