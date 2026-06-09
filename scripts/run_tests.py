@@ -30,7 +30,7 @@ FORT_TESTS = ["test_change_states", "test_field_ops", "test_bcs"]
 
 PYTEST_DIRS = {
     "structural": TESTS_DIR / "structural",
-    "physics":    TESTS_DIR / "physics_fidelity",
+    "physics":    TESTS_DIR / "physics",
     "stress":     TESTS_DIR / "stress",
     "validation": TESTS_DIR / "validation",
 }
