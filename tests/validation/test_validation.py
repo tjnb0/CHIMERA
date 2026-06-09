@@ -1,23 +1,26 @@
 """
 Quantitative validation tests for CHIMERA.
 
-These tests confirm that the solver produces results consistent with
-published benchmarks, not just that it runs without crashing.
-
-Marked @pytest.mark.slow because they require the N=128 OT vortex run
-(~10-30 seconds). Skipped by default; run with:
-    pytest tests/validation/ -m slow
+Two tiers — both marked @pytest.mark.slow; run with:
     python scripts/run_tests.py --validation
 
-Reference data (tests/validation/ot_reference.h5):
-    Generated once by  python scripts/generate_ot_reference.py  after
-    visually validating the N=128 output against the published figures.
-    Commit the file so all future runs compare against the same baseline.
+Tier 1 — Published bounds (N=128):
+    Scalar diagnostics at t=0.5 compared against the ranges reported by
+    Stone et al. (2008) and Gardiner & Stone (2005) for their N=192 runs.
+    These tests require no reference file and pass as long as the physics
+    is qualitatively correct at 128^2.
 
-Published scalar bounds (Stone et al. 2008, Gardiner & Stone 2005):
-    At t=0.5, N=128, gamma=5/3:
-      rho_max ~ 0.52,  rho_min ~ 0.07
-      p_max   ~ 0.53,  p_min   ~ 0.02
+Tier 2 — Grid convergence (N=64, 128, 256):
+    For a 2nd-order scheme with a diffusive Riemann solver (Rusanov),
+    numerical dissipation smears peaks and troughs at coarse resolution.
+    As N doubles, peaks must sharpen (rho_max, P_max increase) and troughs
+    must deepen (rho_min, P_min decrease).  This is a scheme-level check
+    that is independent of any reference file.
+
+    If tests/validation/ot_reference.h5 exists (Athena++ 500x500 run via
+    scripts/convert_athena_to_reference.py), the test additionally verifies
+    that all four diagnostics converge *toward* the high-resolution Athena
+    values as N increases.
 """
 
 import numpy as np
@@ -28,45 +31,55 @@ from pathlib import Path
 TESTS_DIR      = Path(__file__).resolve().parent
 REFERENCE_FILE = TESTS_DIR / "ot_reference.h5"
 
-# Conservative bounds from published benchmarks (generous to allow for
-# minor scheme differences and N=128 resolution effects).
+# ---------------------------------------------------------------------------
+# Conservative bounds from published benchmarks (Stone et al. 2008,
+# Gardiner & Stone 2005).  Generous to allow for Rusanov diffusion at N=128.
+# ---------------------------------------------------------------------------
 RHO_MAX_BOUNDS = (0.42, 0.65)
 RHO_MIN_BOUNDS = (0.03, 0.12)
 P_MAX_BOUNDS   = (0.38, 0.72)
 P_MIN_BOUNDS   = (0.008, 0.07)
 
-# Tolerances for comparison against the stored reference
-L2_DENSITY_TOL = 0.03   # 3% relative L2 error
-L1_PROFILE_TOL = 0.05   # 5% mean relative L1 error on pressure slice
+# Resolutions for the convergence test.  All three must run within the
+# validation timeout; wall-clock cost is about 3 minutes.
+CONVERGENCE_NS = [64, 128, 256]
 
 
 # ---------------------------------------------------------------------------
-# Helper
+# Helpers
 # ---------------------------------------------------------------------------
 
 def _snap_at_time(h5file, field, target_t=0.5, tol=0.006):
-    """Return the snapshot array of `field` closest to target_t."""
+    """Return (array, actual_t) for the snapshot closest to target_t."""
     times = np.array(h5file["time/sim_time"])
     idx   = int(np.argmin(np.abs(times - target_t)))
     if abs(times[idx] - target_t) > tol:
         pytest.skip(
             f"No snapshot within {tol} of t={target_t}; "
-            f"closest is t={times[idx]:.4f}. Check tEnd and tOut."
+            f"closest is t={times[idx]:.4f}.  Check tEnd and tOut."
         )
     key = f"SNAPSHOT{idx + 1}"
     return np.array(h5file[field][key]), float(times[idx])
 
 
+def _scalar_diags(h5_path):
+    """Return (rho_max, rho_min, P_max, P_min) at the t=0.5 snapshot."""
+    with h5py.File(h5_path, "r") as f:
+        rho, _ = _snap_at_time(f, "rho")
+        P,   _ = _snap_at_time(f, "P")
+    return float(rho.max()), float(rho.min()), float(P.max()), float(P.min())
+
+
 # ---------------------------------------------------------------------------
-# Validation tests
+# Check 1 - Published bounds  (N=128)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.slow
 class TestOTVortexValidation:
     """
-    OT vortex at N=128, t=0.5 vs published bounds and stored reference.
-    The ot_128_h5 fixture (defined in tests/conftest.py) runs the simulation
-    exactly once per session and is shared across all tests in this class.
+    OT vortex at N=128, t=0.5 vs published scalar bounds.
+    The ot_128_h5 fixture (tests/conftest.py) runs the simulation once per
+    session and is shared across all tests in this class.
     """
 
     def test_density_max_in_published_bounds(self, ot_128_h5):
@@ -105,59 +118,10 @@ class TestOTVortexValidation:
             f"min(P) = {P.min():.4f} outside [{lo}, {hi}] at t={t:.4f}"
         )
 
-    def test_density_l2_error_vs_reference(self, ot_128_h5):
-        """
-        Relative L2 error of density vs stored reference must be within
-        L2_DENSITY_TOL. Skipped if ot_reference.h5 does not exist.
-
-        Generate the reference with:
-            python scripts/generate_ot_reference.py
-        """
-        if not REFERENCE_FILE.exists():
-            pytest.skip(
-                f"Reference file not found: {REFERENCE_FILE}\n"
-                f"Run: python scripts/generate_ot_reference.py"
-            )
-        with h5py.File(REFERENCE_FILE, "r") as ref:
-            rho_ref, _ = _snap_at_time(ref, "rho")
-        with h5py.File(ot_128_h5, "r") as f:
-            rho, t = _snap_at_time(f, "rho")
-        rms_ref = np.sqrt(np.mean(rho_ref**2))
-        l2_err  = np.sqrt(np.mean((rho - rho_ref)**2)) / (rms_ref + 1e-30)
-        assert l2_err < L2_DENSITY_TOL, (
-            f"Density L2 error vs reference = {l2_err:.4f} "
-            f"(threshold {L2_DENSITY_TOL}) at t={t:.4f}"
-        )
-
-    def test_pressure_profile_vs_reference(self, ot_128_h5):
-        """
-        Horizontal pressure profile at y=0.5 (middle row) vs stored reference.
-        Skipped if ot_reference.h5 does not exist.
-        """
-        if not REFERENCE_FILE.exists():
-            pytest.skip(
-                f"Reference file not found: {REFERENCE_FILE}\n"
-                f"Run: python scripts/generate_ot_reference.py"
-            )
-        with h5py.File(REFERENCE_FILE, "r") as ref:
-            P_ref, _ = _snap_at_time(ref, "P")
-        with h5py.File(ot_128_h5, "r") as f:
-            P, t = _snap_at_time(f, "P")
-
-        N = P.shape[0]
-        profile     = P[:, N // 2]
-        profile_ref = P_ref[:, N // 2]
-        mean_ref    = np.mean(np.abs(profile_ref)) + 1e-30
-        l1_err      = np.mean(np.abs(profile - profile_ref)) / mean_ref
-        assert l1_err < L1_PROFILE_TOL, (
-            f"Pressure profile L1 error vs reference = {l1_err:.4f} "
-            f"(threshold {L1_PROFILE_TOL}) at t={t:.4f}"
-        )
-
     def test_report_values(self, ot_128_h5, capsys):
         """
-        Print actual values alongside published expectations. Always passes.
-        Use this for manual inspection against paper figures.
+        Print realised values alongside published expectations.
+        Always passes — use for manual inspection against paper figures.
         """
         with h5py.File(ot_128_h5, "r") as f:
             rho, t = _snap_at_time(f, "rho")
@@ -170,3 +134,87 @@ class TestOTVortexValidation:
             f"    rho: min~0.07  max~0.52\n"
             f"    P:   min~0.02  max~0.53"
         )
+
+
+# ---------------------------------------------------------------------------
+# Check 2 - Grid convergence  (N=64, 128, 256)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.slow
+class TestOTConvergence:
+    """
+    Grid convergence of OT scalar diagnostics at t=0.5.
+
+    For a 2nd-order scheme with Rusanov fluxes, numerical dissipation
+    over-smooths peaks at coarse resolution.  As the grid is refined:
+
+      rho_max, P_max  must increase  (peaks sharpen)
+      rho_min, P_min  must decrease  (troughs deepen)
+
+    If tests/validation/ot_reference.h5 is present (Athena++ 500x500), the
+    test also verifies that errors in all four diagnostics decrease as N
+    increases, confirming convergence toward the high-resolution truth.
+
+    Both checks run in a single test function to avoid running redundant
+    simulations (3 runs total, ~3–5 minutes).
+    """
+
+    def _run_and_get_diags(self, run_sim, N):
+        """Run OT at N and return (rho_max, rho_min, P_max, P_min) at t=0.5."""
+        h5 = run_sim(
+            problem_type=1, N=N,
+            h5_name=f"ot_conv_N{N}.h5",
+            timeout=600,
+        )
+        return _scalar_diags(h5)
+
+    def test_convergence(self, run_sim):
+        """
+        Monotone convergence of all four diagnostics as N doubles.
+        Convergence toward Athena++ 500x500 values if reference is present.
+        """
+        # --- run all three resolutions ---
+        results = {N: self._run_and_get_diags(run_sim, N) for N in CONVERGENCE_NS}
+
+        labels    = ["rho_max", "rho_min", "P_max", "P_min"]
+        increases = [True,       False,     True,    False]
+
+        # --- Part 1: strict monotonicity between successive resolutions ---
+        for i in range(len(CONVERGENCE_NS) - 1):
+            n1, n2 = CONVERGENCE_NS[i], CONVERGENCE_NS[i + 1]
+            d1, d2 = results[n1], results[n2]
+            for label, v1, v2, should_increase in zip(labels, d1, d2, increases):
+                if should_increase:
+                    assert v2 > v1, (
+                        f"{label} did not increase from N={n1} to N={n2}: "
+                        f"{v1:.4f} -> {v2:.4f}"
+                    )
+                else:
+                    assert v2 < v1, (
+                        f"{label} did not decrease from N={n1} to N={n2}: "
+                        f"{v1:.4f} -> {v2:.4f}"
+                    )
+
+        # --- Part 2: convergence toward Athena++ 500x500 (if file exists) ---
+        if not REFERENCE_FILE.exists():
+            return   # monotonicity check is sufficient without a reference
+
+        ref_diags = _scalar_diags(REFERENCE_FILE)
+
+        def _max_rel_err(diags, ref):
+            return max(
+                abs(d - r) / (abs(r) + 1e-30)
+                for d, r in zip(diags, ref)
+            )
+
+        errors = {N: _max_rel_err(results[N], ref_diags) for N in CONVERGENCE_NS}
+
+        for i in range(len(CONVERGENCE_NS) - 1):
+            n1, n2 = CONVERGENCE_NS[i], CONVERGENCE_NS[i + 1]
+            assert errors[n2] < errors[n1], (
+                f"Scalar error did not decrease from N={n1} to N={n2}: "
+                f"{errors[n1]:.4f} -> {errors[n2]:.4f}\n"
+                f"  Diagnostics  N={n1}: {dict(zip(labels, results[n1]))}\n"
+                f"  Diagnostics  N={n2}: {dict(zip(labels, results[n2]))}\n"
+                f"  Reference  (500x500): {dict(zip(labels, ref_diags))}"
+            )
