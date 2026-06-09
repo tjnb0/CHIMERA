@@ -23,6 +23,7 @@ Tier 2 — Grid convergence (N=64, 128, 256):
     values as N increases.
 """
 
+import hashlib
 import numpy as np
 import h5py
 import pytest
@@ -41,8 +42,42 @@ P_MAX_BOUNDS   = (0.38, 0.72)
 P_MIN_BOUNDS   = (0.008, 0.07)
 
 # Resolutions for the convergence test.  All three must run within the
-# validation timeout; wall-clock cost is about 3 minutes.
+# validation timeout; wall-clock cost is roughly 0.1 + 0.5 + 2.5 minutes.
 CONVERGENCE_NS = [64, 128, 256]
+
+# SHA-256 of the committed Athena++ 500x500 reference file.
+# Update this value whenever the reference is intentionally regenerated:
+#   sha256sum tests/validation/ot_reference.h5
+REFERENCE_SHA256 = "45e66217f6a81bae0831f8201b0cf6b10cdd75df3b5ecfd24c1e7899b5e92b5d"
+
+
+# ---------------------------------------------------------------------------
+# Checksum guard  (fast, no simulation required)
+# ---------------------------------------------------------------------------
+
+def test_reference_file_unchanged():
+    """
+    Guard against accidental modification of the committed Athena++ reference.
+
+    If ot_reference.h5 is absent the test is skipped (contributor hasn't
+    generated it yet).  If it is present its SHA-256 must match the value
+    committed in REFERENCE_SHA256.
+
+    To update after an intentional regeneration:
+        sha256sum tests/validation/ot_reference.h5
+    and paste the result into REFERENCE_SHA256 above.
+    """
+    if not REFERENCE_FILE.exists():
+        pytest.skip("ot_reference.h5 not present — skipping checksum guard")
+
+    digest = hashlib.sha256(REFERENCE_FILE.read_bytes()).hexdigest()
+    assert digest == REFERENCE_SHA256, (
+        "ot_reference.h5 does not match the committed checksum.\n"
+        f"  expected : {REFERENCE_SHA256}\n"
+        f"  actual   : {digest}\n"
+        "If this is an intentional regeneration, update REFERENCE_SHA256 "
+        "in tests/validation/test_validation.py."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +106,7 @@ def _scalar_diags(h5_path):
 
 
 # ---------------------------------------------------------------------------
-# Check 1 - Published bounds  (N=128)
+# Tier 1 — Published bounds  (N=128)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.slow
@@ -137,7 +172,7 @@ class TestOTVortexValidation:
 
 
 # ---------------------------------------------------------------------------
-# Check 2 - Grid convergence  (N=64, 128, 256)
+# Tier 2 — Grid convergence  (N=64, 128, 256)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.slow
@@ -195,7 +230,7 @@ class TestOTConvergence:
                         f"{v1:.4f} -> {v2:.4f}"
                     )
 
-        # --- Part 2: convergence toward Athena++ 500x500 (if file exists) ---
+        # --- Part 2: convergence toward Athena++ 500x500 (if available) ---
         if not REFERENCE_FILE.exists():
             return   # monotonicity check is sufficient without a reference
 

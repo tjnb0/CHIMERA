@@ -18,6 +18,9 @@ a.out
 *.hdf5
 outputs/
 
+# Exception for Orszag-Tang Vortex reference data
+!/tests/validation/ot_reference.h5
+
 # Python
 __pycache__/
 *.pyc 
