@@ -1,6 +1,7 @@
 module mhd_flux
     use mhd_field_ops
     use mhd_config
+    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
     !---------------------------------------------------------------------------
     ! Purpose: Subroutines for flux computations in MHD solver: apply numerical
     !          fluxes to conserved fields, constrained transport for divergence
@@ -174,6 +175,10 @@ contains
             call rusanov_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, &
                               Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,           &
                               flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
+        case (RIEMANN_HLLE)
+            call hlle_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,    &
+                           Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,              &
+                           flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
         case (RIEMANN_HLLD)
             call hlld_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,    &
                            Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,              &
@@ -280,11 +285,120 @@ contains
     end subroutine rusanov_flux
 
 
-    ! subroutine hlld_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,    &
-    !                      Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,              &
-    !                      flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
-    ! !   HLLD Riemann solver -- Miyoshi & Kusano (2005), J. Comput. Phys. 208, 315-344.
-    ! !   To be implemented.
-    ! end subroutine hlld_flux
+    subroutine hlle_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,   &
+                     Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,             &
+                     flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
+    !   HLLE (Harten-Lax-van Leer-Einfeldt) flux for ideal 2D MHD.
+    !
+    !   Method:
+    !       1. Compute floored thermal pressures and total energies for L/R states.
+    !       2. Estimate fast magnetosonic speed c_f for each state using the same
+    !          upper bound as Rusanov: c_f^2 = (gamma*p_th + 2*halfB2) / rho.
+    !       3. Davis-type signal speed estimates:
+    !              S_L = min(vx_L - c_fL, vx_R - c_fR)
+    !              S_R = max(vx_L + c_fL, vx_R + c_fR)
+    !       4. Evaluate physical fluxes F_L, F_R from each state directly.
+    !       5. Assemble HLL intercell flux:
+    !              F = (S_R*F_L - S_L*F_R + S_L*S_R*(U_R - U_L)) / (S_R - S_L)
+    !          with supersonic limiting:
+    !              F = F_L  if S_L >= 0  (all waves right-going)
+    !              F = F_R  if S_R <= 0  (all waves left-going)
+    !
+    !   Notes:
+    !       - P_L, P_R are TOTAL pressures (thermal + magnetic), consistent with
+    !         get_primitive and rusanov_flux.
+    !       - Using the same c_f upper bound as Rusanov keeps the two solvers
+    !         directly comparable and avoids disagreements in the CFL estimate.
+    !       - main.f90 passes rotated arguments for y-direction faces.
+    !
+        integer, intent(in)    :: nx, ny
+        real(8), intent(inout) :: rho_L(nx, ny), rho_R(nx, ny)
+        real(8), intent(in)    :: vx_L(nx, ny),  vx_R(nx, ny)
+        real(8), intent(in)    :: vy_L(nx, ny),  vy_R(nx, ny)
+        real(8), intent(inout) :: P_L(nx, ny),   P_R(nx, ny)
+        real(8), intent(in)    :: Bx_L(nx, ny),  Bx_R(nx, ny)
+        real(8), intent(in)    :: By_L(nx, ny),  By_R(nx, ny)
+        real(8), intent(in)    :: gamma
+        real(8), intent(out)   :: flux_Mass(nx, ny), flux_Momx(nx, ny), flux_Momy(nx, ny)
+        real(8), intent(out)   :: flux_Energy(nx, ny), flux_By(nx, ny)
+
+        ! Local arrays
+        real(8) :: halfBL2(nx, ny), halfBR2(nx, ny)
+        real(8) :: p_th_L(nx, ny), p_th_R(nx, ny)
+        real(8) :: en_L(nx, ny), en_R(nx, ny)
+        real(8) :: c_fL(nx, ny), c_fR(nx, ny)
+        real(8) :: S_L(nx, ny), S_R(nx, ny), inv_Sdiff(nx, ny)
+        ! Left-state physical fluxes
+        real(8) :: FL_Mass(nx, ny), FL_Momx(nx, ny), FL_Momy(nx, ny)
+        real(8) :: FL_Energy(nx, ny), FL_By(nx, ny)
+        ! Right-state physical fluxes
+        real(8) :: FR_Mass(nx, ny), FR_Momx(nx, ny), FR_Momy(nx, ny)
+        real(8) :: FR_Energy(nx, ny), FR_By(nx, ny)
+
+        ! --- Step 1: Magnetic energy and floored thermal pressures ---
+        halfBL2 = 0.5d0 * (Bx_L*Bx_L + By_L*By_L)
+        halfBR2 = 0.5d0 * (Bx_R*Bx_R + By_R*By_R)
+        p_th_L  = max(P_L - halfBL2, P_floor)
+        p_th_R  = max(P_R - halfBR2, P_floor)
+
+        ! --- Step 2: Total energies ---
+        en_L = p_th_L/(gamma - 1.d0) + 0.5d0*rho_L*(vx_L*vx_L + vy_L*vy_L) + halfBL2
+        en_R = p_th_R/(gamma - 1.d0) + 0.5d0*rho_R*(vx_R*vx_R + vy_R*vy_R) + halfBR2
+
+        ! --- Step 3: Fast magnetosonic speeds ---
+        ! c_f^2 = (gamma*p_th + 2*halfB2) / rho; safe sqrt via 0.5*(x+|x|) = max(x,0)
+        c_fL = sqrt(0.5d0 * ((gamma*p_th_L + 2.d0*halfBL2) / rho_L &
+                            + abs((gamma*p_th_L + 2.d0*halfBL2) / rho_L)))
+        c_fR = sqrt(0.5d0 * ((gamma*p_th_R + 2.d0*halfBR2) / rho_R &
+                            + abs((gamma*p_th_R + 2.d0*halfBR2) / rho_R)))
+
+        ! --- Step 4: Davis-type signal speed estimates ---
+        S_L = min(vx_L - c_fL, vx_R - c_fR)
+        S_R = max(vx_L + c_fL, vx_R + c_fR)
+
+        ! --- Step 5: Left-state physical fluxes ---
+        FL_Mass   = rho_L * vx_L
+        FL_Momx   = rho_L*vx_L*vx_L + P_L - Bx_L*Bx_L
+        FL_Momy   = rho_L*vx_L*vy_L - Bx_L*By_L
+        FL_Energy = (en_L + P_L)*vx_L - Bx_L*(Bx_L*vx_L + By_L*vy_L)
+        FL_By     = By_L*vx_L - Bx_L*vy_L
+
+        ! --- Step 6: Right-state physical fluxes ---
+        FR_Mass   = rho_R * vx_R
+        FR_Momx   = rho_R*vx_R*vx_R + P_R - Bx_R*Bx_R
+        FR_Momy   = rho_R*vx_R*vy_R - Bx_R*By_R
+        FR_Energy = (en_R + P_R)*vx_R - Bx_R*(Bx_R*vx_R + By_R*vy_R)
+        FR_By     = By_R*vx_R - Bx_R*vy_R
+
+        ! --- Step 7: HLL intercell flux ---
+        ! F = (S_R*F_L - S_L*F_R + S_L*S_R*(U_R - U_L)) / (S_R - S_L)
+        ! S_R - S_L >= 0 by construction; floor guards the degenerate equal-speed case.
+        inv_Sdiff = 1.d0 / max(S_R - S_L, 1.d-12)
+        flux_Mass   = (S_R*FR_Mass   - S_L*FL_Mass   + S_L*S_R*(rho_L      - rho_R)     ) * inv_Sdiff
+        flux_Momx   = (S_R*FR_Momx   - S_L*FL_Momx   + S_L*S_R*(rho_L*vx_L - rho_R*vx_R)) * inv_Sdiff
+        flux_Momy   = (S_R*FR_Momy   - S_L*FL_Momy   + S_L*S_R*(rho_L*vy_L - rho_R*vy_R)) * inv_Sdiff
+        flux_Energy = (S_R*FR_Energy - S_L*FL_Energy + S_L*S_R*(en_L       - en_R)      ) * inv_Sdiff
+        flux_By     = (S_R*FR_By     - S_L*FL_By     + S_L*S_R*(By_L       - By_R)      ) * inv_Sdiff
+
+        ! --- Step 8: Supersonic limiting ---
+        ! Overwrite with exact upwind flux when the Riemann fan doesn't straddle
+        ! the interface. The HLL formula is not exact in these limits due to the
+        ! inv_Sdiff guard, so explicit where-blocks are required.
+        where (S_L >= 0.d0)
+            flux_Mass = FR_Mass;  flux_Momx = FR_Momx
+            flux_Momy = FR_Momy;  flux_Energy = FR_Energy;  flux_By = FR_By
+        end where
+        where (S_R <= 0.d0)
+            flux_Mass = FL_Mass;  flux_Momx = FL_Momx
+            flux_Momy = FL_Momy;  flux_Energy = FL_Energy;  flux_By = FL_By
+        end where
+
+    end subroutine hlle_flux
+
+
+    !subroutine hlle_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,   &
+    !                 Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,             &
+    !                 flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
+    !end subroutine hlle_flux
 
 end module mhd_flux

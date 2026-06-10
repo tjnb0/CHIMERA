@@ -31,9 +31,10 @@ module mhd_config
 
     ! Riemann solver selection
     integer, parameter :: RIEMANN_RUSANOV = 1                 ! local Lax-Friedrichs; robust / more diffusive
-    integer, parameter :: RIEMANN_HLLD    = 2                 ! Miyoshi & Kusano (2005); resolves MHD waves
+    integer, parameter :: RIEMANN_HLLE    = 2                 ! Harten-Lax-van Leer-Einfeldt; less diffusive
+    integer, parameter :: RIEMANN_HLLD    = 3                 ! Miyoshi & Kusano (2005); resolves MHD waves
     integer, parameter :: riemann_solver  = RIEMANN_RUSANOV   ! Riemann solver selection
-    logical, parameter :: upgrade_2_MOOD   = .true.           ! MOOD reconstruction fallback
+    logical, parameter :: upgrade_2_MOOD  = .true.            ! MOOD reconstruction fallback
 
     ! Boundary condition type constants
     integer, parameter :: BC_PERIODIC = 1  ! Periodic (wrap-around)
