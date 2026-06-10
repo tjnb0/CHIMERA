@@ -238,8 +238,8 @@ program main
             P_all(outputCount, :, :) = P - 0.5d0*(Bx*Bx + By*By)
             Bx_all(outputCount, :, :) = Bx
             By_all(outputCount, :, :) = By
-            Vx_all(outputCount, :, :) = Vx
-            Vy_all(outputCount, :, :) = Vy
+            Vx_all(outputCount, :, :) = vx
+            Vy_all(outputCount, :, :) = vy
             time_all(outputCount) = t
             outputCount = outputCount + 1
         end if
