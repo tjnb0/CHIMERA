@@ -15,11 +15,9 @@ reconstruction with SSP-RK3 time integration, options for Rusanov
 (local Lax-Friedrichs) or HLLE Riemann solvers, and monotonized central (MC)
 or Van Leer slope limiters. Constrained transport preserves the divergence-free
 condition on B to machine precision. The Riemann solver and slope limiter are
-each selectable at build time via a single constant in `mhd_config.f90`.
-OpenMP threading accelerates the reconstruction and slope-limiting passes.
-Boundary conditions are configurable per side, supporting periodic,
-zero-gradient outflow, fixed, and driven inflow on each of the four domain
-edges independently.
+each selectable at build time in `mhd_config.f90`. OpenMP threading accelerates 
+reconstruction and slope-limiting. Boundary conditions are configurable per side, 
+supporting periodic, zero-gradient outflow, fixed, and driven inflow.
 
 Output is written to HDF5, with each field stored as a sequence of snapshots
 alongside the realized physics parameters (gamma, Mach number, plasma beta).
@@ -53,7 +51,7 @@ by an ideal equation of state with adiabatic index gamma.
 | Component | Method |
 |-----------|--------|
 | Spatial discretization | Cell-centered finite volume on a uniform Cartesian grid |
-| Time integration | SSP-RK3 (Shu-Osher 1988); CFL-limited adaptive timestep |
+| Time integration | SSP-RK3; CFL-limited adaptive timestep |
 | Reconstruction | 2nd-order MUSCL with MOOD fallback to 1st-order at troubled cells |
 | Slope limiting | Monotonized central (default) or Van Leer mean limiter |
 | Riemann solver | Rusanov (default) or HLLE |
@@ -65,9 +63,8 @@ by an ideal equation of state with adiabatic index gamma.
 
 ## Features
 
-- **SSP-RK3 time integration** - third-order accurate in time; strong stability
-  preserving (Shu and Osher 1988); no new extrema in smooth flows when paired
-  with the TVD slope limiter
+- **SSP-RK3 time integration** - third-order accurate in time and stability
+  preserving; no new extrema in smooth flows with TVD slope limiter
 - **MUSCL reconstruction** - second-order accurate in space using cell-centered
   gradients extrapolated to face states
 - **MOOD reconstruction** - per-cell fallback to first order where reconstructed
@@ -158,14 +155,11 @@ CHIMERA has five built-in initial conditions selected via command-line:
 |       |-- test_validation.py   - OT vortex vs Stone et al. (2008) published
 |       |                          bounds; L2 grid convergence N=64/128/256;
 |       |                          checksum guard on reference file
-|       |-- athinput.orszag_tang - Athena++ input file for reference generation
 |       `-- ot_reference.h5      - Athena++ 500x500 OT vortex reference (t=0.5)
 |-- scripts/
 |   |-- run_mhd.py               - Run single simulation and animate output
 |   |-- run_mhd_MC.py            - Run Monte Carlo ensemble
 |   |-- run_tests.py             - Unified test runner (all suites)
-|   `-- plot_energy_loss.py      - Compare numerical energy dissipation between
-|                                  two solver runs
 |-- Makefile
 `-- README.md
 ```
