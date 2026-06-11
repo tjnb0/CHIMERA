@@ -113,7 +113,7 @@ contains
     end subroutine get_primitive
 
 
-    subroutine apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, nx, ny)
+    subroutine apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, nx, ny)
     !
     !   Enforce physical limits on conserved variables after update_conserved.
     !   Called once per timestep before get_primitive.
@@ -132,7 +132,7 @@ contains
         real(8), intent(inout) :: Mass(nx,ny), Momx(nx,ny), Momy(nx,ny)
         real(8), intent(inout) :: Energy(nx,ny)
         real(8), intent(in)    :: Bx(nx,ny), By(nx,ny)
-        real(8), intent(in)    :: vol
+        real(8), intent(in)    :: vol, gamma
 
         real(8) :: halfB2(nx,ny), E_mag_floor(nx,ny)
         real(8) :: v_mag(nx,ny), scale(nx,ny)
@@ -150,13 +150,7 @@ contains
             Momx   = 0.0d0
             Momy   = 0.0d0
             Mass   = rho_floor * vol
-            Energy = E_mag_floor
-        end where
-
-        ! Check energy floor
-        ! Energy below the magnetic floor means negative thermal pressure
-        where (Energy < E_mag_floor)
-            Energy = E_mag_floor
+            Energy = max(Energy, (P_floor / (gamma - 1.0d0) + halfB2) * vol)
         end where
 
         ! Check momentum limiting

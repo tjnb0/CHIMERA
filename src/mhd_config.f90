@@ -32,7 +32,6 @@ module mhd_config
     ! Riemann solver selection
     integer, parameter :: RIEMANN_RUSANOV = 1                 ! local Lax-Friedrichs; robust / more diffusive
     integer, parameter :: RIEMANN_HLLE    = 2                 ! Harten-Lax-van Leer-Einfeldt; less diffusive
-    integer, parameter :: RIEMANN_HLLD    = 3                 ! Miyoshi & Kusano (2005); resolves MHD waves
     integer, parameter :: riemann_solver  = RIEMANN_RUSANOV   ! Riemann solver selection
     logical, parameter :: upgrade_2_MOOD  = .true.            ! MOOD reconstruction fallback
 
@@ -55,7 +54,7 @@ module mhd_config
     real(8), parameter :: twoPi = 6.2831853071795865d0        ! 2 * pi
     real(8), parameter :: fourPi = 12.566370614359173d0       ! 4 * pi
     real(8), parameter :: boxsize    = 1.0d0                  ! Size of the simulation box
-    real(8), parameter :: courant_fac = 0.15d0                 ! CFL safety factor
+    real(8), parameter :: courant_fac = 0.3d0                 ! CFL safety factor
     real(8), parameter :: P_floor   = 1.0d-12                 ! Minimum absolute pressure floor
     real(8), parameter :: rho_floor = 1.0d-12                 ! Minimum density floor
     real(8), parameter :: e_floor_frac = 1.0d-10              ! Proportional P floor: p >= e_floor_frac*(KE + MagE)
