@@ -8,7 +8,7 @@ module mhd_change_states
 
     implicit none
     private
-    public get_conserved, get_primitive
+    public get_conserved, get_primitive, apply_conserved_floors
     
 contains
 
@@ -112,5 +112,57 @@ contains
 
     end subroutine get_primitive
 
+
+    subroutine apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, nx, ny)
+    !
+    !   Enforce physical limits on conserved variables after update_conserved.
+    !   Called once per timestep before get_primitive.
+    !
+    !   Checks applied:
+    !       1. Mass floor: negative mass is unphysical; zero momentum and
+    !          reset energy to magnetic-only floor when mass is floored.
+    !       2. Energy floor: energy below the magnetic floor implies negative
+    !          thermal pressure regardless of momentum; clamp it.
+    !       3. Momentum limiting: cap implied velocity at V_MAX to prevent
+    !          near-vacuum cells with residual momentum from blowing up the CFL
+    !          and the reconstruction prediction step.
+    !
+    !
+        integer, intent(in)    :: nx, ny
+        real(8), intent(inout) :: Mass(nx,ny), Momx(nx,ny), Momy(nx,ny)
+        real(8), intent(inout) :: Energy(nx,ny)
+        real(8), intent(in)    :: Bx(nx,ny), By(nx,ny)
+        real(8), intent(in)    :: vol, gamma
+
+        real(8) :: halfB2(nx,ny), E_mag_floor(nx,ny)
+        real(8) :: v_mag(nx,ny), scale(nx,ny)
+
+        real(8), parameter :: V_MAX = 50.0d0   ! velocity cap for near-vacuum cells
+
+        ! Magnetic-only energy floor: E >= 0.5*(Bx^2+By^2)*vol
+        halfB2      = 0.5d0*(Bx*Bx + By*By)
+        E_mag_floor = halfB2 * vol
+
+        ! Check mass floor 
+        ! Negative mass -> velocity and thermal pressure blow up. Zero momentum
+        ! and sync energy to a magnetic state
+        where (Mass < rho_floor * vol)
+            Momx   = 0.0d0
+            Momy   = 0.0d0
+            Mass   = rho_floor * vol
+            Energy = max(Energy, (P_floor / (gamma - 1.0d0) + halfB2) * vol)
+        end where
+
+        ! Check momentum limiting
+        ! If v = |Mom| / Mass > V_MAX, the cell is near-vacuum and gives
+        ! non-physical flow. Scale components and preserve direction.
+        v_mag = sqrt(Momx*Momx + Momy*Momy) / Mass
+        where (v_mag > V_MAX)
+            scale = V_MAX * Mass / sqrt(Momx*Momx + Momy*Momy)
+            Momx  = Momx * scale
+            Momy  = Momy * scale
+        end where
+
+    end subroutine apply_conserved_floors
     
 end module mhd_change_states

@@ -21,14 +21,19 @@ module mhd_config
     ! - Advection: N = 1024, tEnd = 1.0
     ! - MHD Rotor: N = 2000, tEnd = 0.9
 
-    ! Advanced parameters
-    logical, parameter :: useSlopeLimiting = .true.  ! Enable/disable slope limiting
 
+    !--- Advanced parameters ---
     ! Slope limiter selection (no effect when useSlopeLimiting = .false.)
-    integer, parameter :: LIMITER_VAN_LEER = 1                ! Van Leer harmonic mean; robust / more diffuse
+    logical, parameter :: useSlopeLimiting = .true.  ! Enable/disable slope limiting
+    integer, parameter :: LIMITER_VAN_LEER = 1                ! Van Leer harmonic mean; robust / more diffusive
     integer, parameter :: LIMITER_MC       = 2                ! Monotonized central; less diffuse
     integer, parameter :: slope_limiter    = LIMITER_MC       ! slope limiter selection
-    logical, parameter :: upgrade_2_MOOD   = .true.           ! MOOD reconstruction fallback
+
+    ! Riemann solver selection
+    integer, parameter :: RIEMANN_RUSANOV = 1                 ! local Lax-Friedrichs; robust / more diffusive
+    integer, parameter :: RIEMANN_HLLE    = 2                 ! Harten-Lax-van Leer-Einfeldt; less diffusive
+    integer, parameter :: riemann_solver  = RIEMANN_RUSANOV   ! Riemann solver selection
+    logical, parameter :: upgrade_2_MOOD  = .true.            ! MOOD reconstruction fallback
 
     ! Boundary condition type constants
     integer, parameter :: BC_PERIODIC = 1  ! Periodic (wrap-around)
@@ -53,6 +58,7 @@ module mhd_config
     real(8), parameter :: P_floor   = 1.0d-12                 ! Minimum absolute pressure floor
     real(8), parameter :: rho_floor = 1.0d-12                 ! Minimum density floor
     real(8), parameter :: e_floor_frac = 1.0d-10              ! Proportional P floor: p >= e_floor_frac*(KE + MagE)
+    real(8), parameter :: cf_max = 1.0d2                      ! Maximumum fast magnetosonic speed
 
     ! Target parameters for GRF 
     ! Negative = sample randomly.
