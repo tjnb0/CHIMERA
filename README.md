@@ -12,12 +12,13 @@ an independent project.
 CHIMERA evolves the compressible ideal MHD equations in conservative form on
 a uniform 2D Cartesian grid. The numerical scheme combines second-order MUSCL
 reconstruction with SSP-RK3 time integration, options for Rusanov
-(local Lax-Friedrichs) or HLLE Riemann solvers, and monotonized central (MC)
-or Van Leer slope limiters. Constrained transport preserves the divergence-free
-condition on B to machine precision. The Riemann solver and slope limiter are
-each selectable at build time in `mhd_config.f90`. OpenMP threading accelerates 
-reconstruction and slope-limiting. Boundary conditions are configurable per side, 
-supporting periodic, zero-gradient outflow, fixed, and driven inflow.
+(local Lax-Friedrichs), HLLE, or HLLD (experimental) Riemann solvers, and 
+monotonized central (MC) or Van Leer slope limiters. Constrained transport 
+preserves the divergence-free condition on B to machine precision. The Riemann 
+solver and slope limiter are each selectable at build time in `mhd_config.f90`.
+OpenMP threading accelerates reconstruction and slope-limiting. Boundary 
+conditions are configurable per side, supporting periodic, zero-gradient outflow,
+fixed, and driven inflow.
 
 Output is written to HDF5, with each field stored as a sequence of snapshots
 alongside the realized physics parameters (gamma, Mach number, plasma beta).
@@ -54,7 +55,7 @@ by an ideal equation of state with adiabatic index gamma.
 | Time integration | SSP-RK3; CFL-limited adaptive timestep |
 | Reconstruction | 2nd-order MUSCL with MOOD fallback to 1st-order at troubled cells |
 | Slope limiting | Monotonized central (default) or Van Leer mean limiter |
-| Riemann solver | Rusanov (default) or HLLE |
+| Riemann solver | Rusanov (default), HLLE, or *HLLD (experimental)* |
 | Divergence control | Constrained transport (CT) on staggered face-centered B; div B monitored every step |
 | Parallelism | OpenMP on reconstruction and slope-limiting loops |
 | Boundary conditions | Per-side ghost-cell layer: periodic, outflow, fixed, or driven inflow |
@@ -69,8 +70,9 @@ by an ideal equation of state with adiabatic index gamma.
   gradients extrapolated to face states
 - **MOOD reconstruction** - per-cell fallback to first order where reconstructed
   values exceed stencil bounds or implied thermal pressure falls below the floor
-- **Riemann solver** - Rusanov (default) or HLLE; selected at build time in
-  `mhd_config.f90`. HLLE is less diffusive; Rusanov is more robust near shocks.
+- **Riemann solver** - Rusanov (default), HLLE, or HLLD (experimental); selected
+  at build time in `mhd_config.f90`. Rusanov is robust near shocks, but diffusive,
+  HLLE is less diffusive, HLLD resolves MHD waves and is less stable.
 - **Slope limiter** - monotonized central (MC, default) or Van Leer mean;
   selected at build time in `mhd_config.f90`. MC is fully TVD; Van Leer is
   more conservative near strong shocks.
