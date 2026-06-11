@@ -141,10 +141,10 @@ contains
     !       - dx   : cell size
     !
     !   Outputs:
-    !       - f_XL : right state at the right x-face of each cell
-    !       - f_XR : left  state at the right x-face of each cell
-    !       - f_YL : right state at the top   y-face of each cell
-    !       - f_YR : left  state at the top   y-face of each cell
+    !       - f_XL : left  state at the right x-face of each cell (cell i extrapolated rightward)
+    !       - f_XR : right state at the right x-face of each cell (cell i+1 extrapolated leftward)
+    !       - f_YL : left  state at the top   y-face of each cell (cell j extrapolated upward)
+    !       - f_YR : right state at the top   y-face of each cell (cell j+1 extrapolated downward)
     !
         integer, intent(in)  :: nx, ny
         real(8), intent(in)  :: dx
@@ -158,31 +158,31 @@ contains
         integer :: i, j, ip1, im1, jp1, jm1
 
         ! 1. MUSCL reconstruction candidates
-        f_XR   = f + 0.5d0 * dx * f_dx   ! left  state at right x-face
-        f_YR   = f + 0.5d0 * dx * f_dy   ! left  state at top   y-face
-        temp_x = f - 0.5d0 * dx * f_dx   ! right state at right x-face (pre-shift)
-        temp_y = f - 0.5d0 * dx * f_dy   ! right state at top   y-face (pre-shift)
+        f_XL   = f + 0.5d0 * dx * f_dx   ! left  state at right x-face (cell i extrapolated rightward)
+        f_YL   = f + 0.5d0 * dx * f_dy   ! left  state at top   y-face (cell j extrapolated upward)
+        temp_x = f - 0.5d0 * dx * f_dx   ! right state at right x-face, before pull from cell i+1
+        temp_y = f - 0.5d0 * dx * f_dy   ! right state at top   y-face, before pull from cell j+1
 
-        ! X right state: interior uses right neighbor; boundary uses BC.
-        f_XL(1:nx-1, :) = temp_x(2:nx, :)
+        ! X right state: pull left-extrapolation from cell i+1; boundary uses BC.
+        f_XR(1:nx-1, :) = temp_x(2:nx, :)
         select case (bc_xhi)
             case (BC_PERIODIC)
-                f_XL(nx, :) = temp_x(1, :)   ! wrap
+                f_XR(nx, :) = temp_x(1, :)   ! wrap
             case default                       ! outflow/fixed/inflow: zero-gradient
-                f_XL(nx, :) = f(nx, :)
+                f_XR(nx, :) = f(nx, :)
         end select
 
-        ! Y right state: interior uses upper neighbor; boundary uses BC.
-        f_YL(:, 1:ny-1) = temp_y(:, 2:ny)
+        ! Y right state: pull left-extrapolation from cell j+1; boundary uses BC.
+        f_YR(:, 1:ny-1) = temp_y(:, 2:ny)
         select case (bc_yhi)
             case (BC_PERIODIC)
-                f_YL(:, ny) = temp_y(:, 1)   ! wrap
+                f_YR(:, ny) = temp_y(:, 1)   ! wrap
             case default
-                f_YL(:, ny) = f(:, ny)
+                f_YR(:, ny) = f(:, ny)
         end select
 
         ! 2. Optional MOOD fallback to first order at troubled cells
-        if (upgrade_2_MOOD) then
+        if (fallback_2_MOOD) then
             !$OMP parallel do private(i,j,ip1,im1,jp1,jm1,localmin,localmax) &
             !$OMP shared(f, f_XL, f_XR, f_YL, f_YR, nx, ny, rho_or_p)
             do j = 1, ny
@@ -228,6 +228,7 @@ contains
 
     end subroutine reconstruction
 
+    
     subroutine thermal_pressure_check(nx, ny,                        &
                                        P_XL,  P_XR,  P_YL,  P_YR,   &
                                        Bx_XL, Bx_XR, Bx_YL, Bx_YR, &
