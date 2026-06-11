@@ -62,6 +62,11 @@ program main
         c0_sq = gamma * (P - 0.5d0 * (Bx*Bx + By*By)) * inv_rho       ! (sound speed)^2
         ca_sq = (Bx*Bx + By*By) * inv_rho                             ! (Alfven speed)^2
         cf    = sqrt(c0_sq + ca_sq)                                   ! fast mag.sonic speed
+        where (rho < 1.0d-3)
+            cf = min(cf, 50.0d0)                                      ! Set bound on cf 
+        end where
+
+        ! Calculate timestep from wave speeds
         dt    = courant_fac * minval(dx / (cf + sqrt(vx*vx + vy*vy))) ! timestep
 
         ! Reduce dt if approaching next output time
@@ -177,15 +182,13 @@ program main
         call update_conserved(Momx, flux_Momx_X, flux_Momx_Y, dx, dt, N, N)
         call update_conserved(Momy, flux_Momy_X, flux_Momy_Y, dx, dt, N, N)
         call update_conserved(Energy, flux_Energy_X, flux_Energy_Y, dx, dt, N, N)
+        call apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, N, N)
         call constrained_transport(b_x, b_y, flux_By_X, flux_Bx_Y, dx, dt, N, N)
 
         ! Outflow boundary flux correction for xlo and ylo.
         ! update_conserved applies interior face fluxes but adds no incoming flux
         ! from outside at non-periodic low-side boundaries. This block adds the
-        ! physical one-sided MHD flux at those faces, computed from the half-step
-        ! prime states (consistent with the interior flux computation).
-        ! xhi and yhi need no correction: the reconstruction ghost already set the
-        ! correct outflow flux at those faces in flux_F_X(N,:) and flux_F_Y(:,N).
+        ! one-sided MHD flux at those faces
         if (bc_xlo /= BC_PERIODIC) then
             block
                 real(8) :: halfB2_1(N), en_1(N)

@@ -181,11 +181,6 @@ contains
             call hlle_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,    &
                            Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,              &
                            flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
-        case (RIEMANN_HLLC)
-            ! HLLC
-            call hllc_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,    &
-                           Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,              &
-                           flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
         case (RIEMANN_HLLD)
             ! HLLD
             call hlld_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,    &
@@ -404,248 +399,6 @@ contains
     end subroutine hlle_flux
 
 
-subroutine hllc_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,    &
-                         Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,              &
-                         flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
-    !   HLLC Riemann solver for ideal 2D MHD.
-    !   Li, S. (2005), J. Comput. Phys. 203, 344-357.
-    !
-    !   Three-wave structure: S_L, S_M (contact/entropy wave), S_R.
-    !   Two intermediate star states, one on each side of S_M.
-    !
-    !   Key difference from HLLD: tangential velocity is unchanged across the
-    !   contact (vy* = vy), and By* follows from the induction equation only,
-    !   without the Alfven-wave correction. This removes the
-    !       denK = rhoK*(SK-vxK)*(SK-SM) - BxK^2
-    !   denominators that cause HLLD's near-vacuum blow-up, making HLLC
-    !   substantially more robust near current sheets.
-    !
-    !   Trade-off: Alfven waves and tangential velocity/field discontinuities
-    !   are not resolved (they are smeared as in HLLE). Density contacts and
-    !   entropy waves are captured sharply.
-    !
-    !   Arguments follow the standard physical convention:
-    !       _L = left state (cell i),  _R = right state (cell i+1)
-    !   main.f90 passes rotated arguments for y-direction faces.
-    !
-    !   Signal speeds: exact fast magnetosonic (same formula as HLLD).
-    !   Star states:   Li (2005), Eqs. 10-16.
-    !   Flux selection: F* = F_K + S_K*(U* - U_K)
-
-        integer, intent(in)    :: nx, ny
-        real(8), intent(inout) :: rho_L(nx, ny), rho_R(nx, ny)
-        real(8), intent(in)    :: vx_L(nx, ny),  vx_R(nx, ny)
-        real(8), intent(in)    :: vy_L(nx, ny),  vy_R(nx, ny)
-        real(8), intent(inout) :: P_L(nx, ny),   P_R(nx, ny)
-        real(8), intent(in)    :: Bx_L(nx, ny),  Bx_R(nx, ny)
-        real(8), intent(in)    :: By_L(nx, ny),  By_R(nx, ny)
-        real(8), intent(in)    :: gamma
-        real(8), intent(out)   :: flux_Mass(nx, ny), flux_Momx(nx, ny)
-        real(8), intent(out)   :: flux_Momy(nx, ny), flux_Energy(nx, ny)
-        real(8), intent(out)   :: flux_By(nx, ny)
-
-        integer :: i, j
-
-        ! Primitive state scalars
-        real(8) :: rhoL, rhoR, vxL, vxR, vyL, vyR, pTL, pTR, BxL, BxR, ByL, ByR
-
-        ! Thermodynamic / energy scalars
-        real(8) :: halfBL2, halfBR2, p_thL, p_thR, enL, enR
-        real(8) :: vdotBL, vdotBR
-
-        ! Physical MHD fluxes from L and R states
-        real(8) :: fM_L,  fMx_L, fMy_L, fE_L,  fB_L
-        real(8) :: fM_R,  fMx_R, fMy_R, fE_R,  fB_R
-
-        ! Wave speeds
-        real(8) :: csL2, csR2, caL, caR, b2L, b2R, tmpL, tmpR, cfL, cfR
-        real(8) :: SL, SR, SM, pT_star, denMD
-
-        ! Star-state scalars
-        real(8) :: denL, denR           ! = S_K - S_M  (denominator for each side)
-        real(8) :: rho_Ls, rho_Rs       ! star densities
-        real(8) :: By_Ls,  By_Rs        ! star By  (from induction equation)
-        real(8) :: vdotBLs, vdotBRs     ! v*·B* for each side
-        real(8) :: en_Ls,  en_Rs        ! star total energies
-
-        ! HLL fallback (degenerate SM)
-        real(8) :: inv_SRSL
-
-        ! Near-vacuum guard: if cf exceeds this, reconstruction produced an
-        ! unphysical state; fall back to upwind from the healthier side.
-        ! Covers all CHIMERA test problems with a large safety margin.
-        real(8), parameter :: CF_MAX = 1.0d2
-
-        ! Fraction of fan width (SR-SL) that SM must stay away from each edge.
-        ! Keeps (S_K - SM) denominators bounded away from zero.
-        real(8), parameter :: EPS_FAN = 1.0d-6
-
-        do j = 1, ny
-            do i = 1, nx
-
-                ! --- primitive states ---
-                rhoL = rho_L(i,j);  rhoR = rho_R(i,j)
-                vxL  = vx_L(i,j);   vxR  = vx_R(i,j)
-                vyL  = vy_L(i,j);   vyR  = vy_R(i,j)
-                pTL  = P_L(i,j);    pTR  = P_R(i,j)     ! total pressure
-                BxL  = Bx_L(i,j);   BxR  = Bx_R(i,j)
-                ByL  = By_L(i,j);   ByR  = By_R(i,j)
-
-                ! swap _L/_R on input to match physical convention (***FIX in mhd_derivatives***)
-                rhoL = rho_R(i,j);  rhoR = rho_L(i,j)
-                vxL  = vx_R(i,j);   vxR  = vx_L(i,j)
-                vyL  = vy_R(i,j);   vyR  = vy_L(i,j)
-                pTL  = P_R(i,j);    pTR  = P_L(i,j)
-                BxL  = Bx_R(i,j);   BxR  = Bx_L(i,j)
-                ByL  = By_R(i,j);   ByR  = By_L(i,j)
-
-                ! floored thermal pressures and total energies
-                halfBL2 = 0.5d0*(BxL**2 + ByL**2)
-                halfBR2 = 0.5d0*(BxR**2 + ByR**2)
-                p_thL   = max(pTL - halfBL2, P_floor)
-                p_thR   = max(pTR - halfBR2, P_floor)
-                enL = p_thL/(gamma-1.0d0) + 0.5d0*rhoL*(vxL**2 + vyL**2) + halfBL2
-                enR = p_thR/(gamma-1.0d0) + 0.5d0*rhoR*(vxR**2 + vyR**2) + halfBR2
-
-                ! physical MHD fluxes in normal (x) direction
-                vdotBL = vxL*BxL + vyL*ByL
-                fM_L   = rhoL*vxL
-                fMx_L  = rhoL*vxL**2  + pTL - BxL**2
-                fMy_L  = rhoL*vxL*vyL - BxL*ByL
-                fE_L   = (enL + pTL)*vxL - BxL*vdotBL
-                fB_L   = ByL*vxL - BxL*vyL
-
-                vdotBR = vxR*BxR + vyR*ByR
-                fM_R   = rhoR*vxR
-                fMx_R  = rhoR*vxR**2  + pTR - BxR**2
-                fMy_R  = rhoR*vxR*vyR - BxR*ByR
-                fE_R   = (enR + pTR)*vxR - BxR*vdotBR
-                fB_R   = ByR*vxR - BxR*vyR
-
-                ! --- exact fast magnetosonic speeds (same as HLLD) ---
-                caL  = BxL**2 / rhoL          ! normal Alfven speed^2
-                caR  = BxR**2 / rhoR
-                csL2 = gamma*p_thL / rhoL     ! sound speed^2
-                csR2 = gamma*p_thR / rhoR
-                b2L  = (BxL**2 + ByL**2) / rhoL   ! total Alfven speed^2
-                b2R  = (BxR**2 + ByR**2) / rhoR
-
-                tmpL = csL2 + b2L
-                tmpR = csR2 + b2R
-                cfL  = sqrt(0.5d0*(tmpL + sqrt(max(tmpL**2 - 4.0d0*csL2*caL, 0.0d0))))
-                cfR  = sqrt(0.5d0*(tmpR + sqrt(max(tmpR**2 - 4.0d0*csR2*caR, 0.0d0))))
-
-                ! Davis signal speed estimates
-                SL = min(vxL - cfL, vxR - cfR)
-                SR = max(vxL + cfL, vxR + cfR)
-
-                ! --- near-vacuum guard: unphysical cf from corrupted reconstruction ---
-                if (cfL > CF_MAX .or. cfR > CF_MAX) then
-                    if (cfL <= cfR) then
-                        flux_Mass(i,j)   = fM_L;   flux_Momx(i,j)   = fMx_L
-                        flux_Momy(i,j)   = fMy_L;  flux_Energy(i,j) = fE_L
-                        flux_By(i,j)     = fB_L
-                    else
-                        flux_Mass(i,j)   = fM_R;   flux_Momx(i,j)   = fMx_R
-                        flux_Momy(i,j)   = fMy_R;  flux_Energy(i,j) = fE_R
-                        flux_By(i,j)     = fB_R
-                    end if
-                    cycle
-                end if
-
-                ! --- supersonic: pure upwind ---
-                if (SL >= 0.0d0) then
-                    flux_Mass(i,j)   = fM_L;   flux_Momx(i,j)   = fMx_L
-                    flux_Momy(i,j)   = fMy_L;  flux_Energy(i,j) = fE_L
-                    flux_By(i,j)     = fB_L
-                    cycle
-                end if
-                if (SR <= 0.0d0) then
-                    flux_Mass(i,j)   = fM_R;   flux_Momx(i,j)   = fMx_R
-                    flux_Momy(i,j)   = fMy_R;  flux_Energy(i,j) = fE_R
-                    flux_By(i,j)     = fB_R
-                    cycle
-                end if
-
-                ! --- contact speed SM and star total pressure pT_star ---
-                ! (same RH derivation as HLLD)
-                denMD = rhoR*(SR - vxR) - rhoL*(SL - vxL)
-                if (abs(denMD) < 1.0d-15) &
-                    denMD = sign(1.0d-15, denMD)
-
-                SM      = (rhoR*vxR*(SR-vxR) - rhoL*vxL*(SL-vxL) - (pTR - pTL)) / denMD
-                pT_star = pTL + rhoL*(SL - vxL)*(SM - vxL)
-                pT_star = max(pT_star, P_floor)
-
-                ! --- HLL fallback when SM is degenerate ---
-                ! SM too close to a fan edge drives (S_K - SM) -> 0, making
-                ! rho*, By*, en* blow up. Use the always-bounded HLL instead.
-                if (SM <= SL + EPS_FAN*(SR-SL) .or. SM >= SR - EPS_FAN*(SR-SL)) then
-                    inv_SRSL         = 1.0d0 / (SR - SL)
-                    flux_Mass(i,j)   = (SR*fM_L  - SL*fM_R  + SL*SR*(rhoR     - rhoL    )) * inv_SRSL
-                    flux_Momx(i,j)   = (SR*fMx_L - SL*fMx_R + SL*SR*(rhoR*vxR - rhoL*vxL)) * inv_SRSL
-                    flux_Momy(i,j)   = (SR*fMy_L - SL*fMy_R + SL*SR*(rhoR*vyR - rhoL*vyL)) * inv_SRSL
-                    flux_Energy(i,j) = (SR*fE_L  - SL*fE_R  + SL*SR*(enR      - enL     )) * inv_SRSL
-                    flux_By(i,j)     = (SR*fB_L  - SL*fB_R  + SL*SR*(ByR      - ByL     )) * inv_SRSL
-                    cycle
-                end if
-
-                ! --- left star state (Li 2005, Eqs. 12-14, 16) ---
-                !
-                ! vy* = vyL  (tangential velocity unchanged: HLLC does not
-                !             resolve Alfven waves, so no vy correction)
-                !
-                ! By* from induction equation across SL wave:
-                !   By* * (SL - SM) = ByL * (SL - vxL)
-                !   -> By_Ls = ByL * (SL - vxL) / (SL - SM)
-                !
-                ! Energy from RH condition across SL:
-                !   (SL-SM)*en* = (SL-vxL)*enL - pTL*vxL + pT_star*SM
-                !                 + BxL*(vdotBL - vdotBLs)
-                !   where vdotBLs = SM*BxL + vyL*By_Ls  (v*·B* in star region)
-                !
-                denL    = SL - SM
-                rho_Ls  = rhoL*(SL - vxL) / denL
-                By_Ls   = ByL *(SL - vxL) / denL
-                vdotBLs = SM*BxL + vyL*By_Ls
-                en_Ls   = ((SL-vxL)*enL - pTL*vxL + pT_star*SM &
-                           + BxL*(vdotBL - vdotBLs)) / denL
-
-                ! --- right star state ---
-                denR    = SR - SM
-                rho_Rs  = rhoR*(SR - vxR) / denR
-                By_Rs   = ByR *(SR - vxR) / denR
-                vdotBRs = SM*BxR + vyR*By_Rs
-                en_Rs   = ((SR-vxR)*enR - pTR*vxR + pT_star*SM &
-                           + BxR*(vdotBR - vdotBRs)) / denR
-
-                ! --- flux selection: F* = F_K + S_K*(U* - U_K) ---
-                !
-                ! U* = [rho*, rho*·SM, rho*·vy, en*, By*]
-                !   (vx* = SM, vy* = vy)
-                !
-                ! Momy row simplifies: rho*·vy* - rho·vy = vy*(rho* - rho)
-                !
-                if (SM >= 0.0d0) then
-                    flux_Mass(i,j)   = fM_L  + SL*(rho_Ls     - rhoL    )
-                    flux_Momx(i,j)   = fMx_L + SL*(rho_Ls*SM  - rhoL*vxL)
-                    flux_Momy(i,j)   = fMy_L + SL*vyL*(rho_Ls - rhoL    )
-                    flux_Energy(i,j) = fE_L  + SL*(en_Ls      - enL     )
-                    flux_By(i,j)     = fB_L  + SL*(By_Ls      - ByL     )
-                else
-                    flux_Mass(i,j)   = fM_R  + SR*(rho_Rs     - rhoR    )
-                    flux_Momx(i,j)   = fMx_R + SR*(rho_Rs*SM  - rhoR*vxR)
-                    flux_Momy(i,j)   = fMy_R + SR*vyR*(rho_Rs - rhoR    )
-                    flux_Energy(i,j) = fE_R  + SR*(en_Rs      - enR     )
-                    flux_By(i,j)     = fB_R  + SR*(By_Rs      - ByR     )
-                end if
-
-            end do
-        end do
-
-    end subroutine hllc_flux
-
-    
     subroutine hlld_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,    &
                          Bx_L, Bx_R, By_L, By_R, gamma, nx, ny,              &
                          flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By)
@@ -698,12 +451,6 @@ subroutine hllc_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,    &
 
         ! HLL fallback (Prong 2: SM outside [SL,SR])
         real(8) :: inv_SRSL
-
-        ! Maximum physically reasonable fast magnetosonic speed.
-        ! Covers all CHIMERA test problems (OT ~2, Rotor ~20, GRF ~3) with a
-        ! large safety margin. If cfL or cfR exceeds this, the reconstruction
-        ! has produced a near-vacuum state and an upwind flux is used instead.
-        real(8), parameter :: CF_MAX = 1.0d2
 
         ! Minimum margin (as a fraction of fan width SR-SL) that the contact speed
         ! SM must keep from each fan edge. If SM is closer than EPS_FAN*(SR-SL) to
@@ -800,7 +547,7 @@ subroutine hllc_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R,    &
                 ! corrupted state. An HLL fallback here would inject O(cfR^2) energy
                 ! into the neighbour cell in a single step, diverging in ~3 timesteps.
                 ! Use upwind from the healthier (slower) side instead.
-                if (cfL > CF_MAX .or. cfR > CF_MAX) then
+                if (cfL > cf_max .or. cfR > cf_max) then
                     if (cfL <= cfR) then
                         flux_Mass(i,j)   = fM_L;   flux_Momx(i,j)   = fMx_L
                         flux_Momy(i,j)   = fMy_L;  flux_Energy(i,j) = fE_L
