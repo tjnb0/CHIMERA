@@ -61,8 +61,8 @@ module mhd_config
     real(8), parameter :: cf_max = 1.0d2                      ! Maximumum fast magnetosonic speed
 
     ! Target parameters for GRF 
-    ! Negative = sample randomly.
-    real(8) :: target_M_s  = -1.0d0   ! Sonic Mach number override
-    real(8) :: target_beta = -1.0d0   ! Plasma beta override
+    ! Negative = sample randomly within bounds
+    real(8) :: target_M_s  = -1.0d0   ! Sonic Mach number override in command line
+    real(8) :: target_beta = -1.0d0   ! Plasma beta override in command line
 
 end module mhd_config

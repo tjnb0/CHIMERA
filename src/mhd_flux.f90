@@ -332,6 +332,8 @@ contains
         ! Right-state physical fluxes
         real(8) :: FR_Mass(nx, ny), FR_Momx(nx, ny), FR_Momy(nx, ny)
         real(8) :: FR_Energy(nx, ny), FR_By(nx, ny)
+        ! Stability 
+        real(8), parameter :: cf_max_hlle = 1.0d2
 
         ! --- Step 1: Magnetic energy and floored thermal pressures ---
         halfBL2 = 0.5d0 * (Bx_L*Bx_L + By_L*By_L)
@@ -349,6 +351,9 @@ contains
                             + abs((gamma*p_th_L + 2.d0*halfBL2) / rho_L)))
         c_fR = sqrt(0.5d0 * ((gamma*p_th_R + 2.d0*halfBR2) / rho_R &
                             + abs((gamma*p_th_R + 2.d0*halfBR2) / rho_R)))
+
+        c_fL = min(c_fL, cf_max_hlle)
+        c_fR = min(c_fR, cf_max_hlle)
 
         ! --- Step 4: Davis-type signal speed estimates ---
         S_L = min(vx_L - c_fL, vx_R - c_fR)
