@@ -10,15 +10,16 @@ an independent project.
 ## Overview
 
 CHIMERA evolves the compressible ideal MHD equations in conservative form on
-a uniform 2D Cartesian grid. The numerical scheme combines second-order
-MUSCL-Hancock reconstruction with options for Rusanov (local Lax-Friedrichs) or 
-HLLE Riemann solvers and monotonized central (MC) or Van Leer slope limiters, 
-and uses constrained transport to preserve the divergence-free condition on B 
-to machine precision. The limiter is selectable at build time (MC or Van Leer) 
-via a single constant in `mhd_config.f90`. OpenMP threading accelerates the 
-reconstruction and slope-limiting passes. Boundary conditions are configurable 
-per side, supporting periodic, zero-gradient outflow, fixed, and driven inflow 
-on each of the four domain edges independently.
+a uniform 2D Cartesian grid. The numerical scheme combines second-order MUSCL
+reconstruction with SSP-RK3 time integration, options for Rusanov
+(local Lax-Friedrichs) or HLLE Riemann solvers, and monotonized central (MC)
+or Van Leer slope limiters. Constrained transport preserves the divergence-free
+condition on B to machine precision. The Riemann solver and slope limiter are
+each selectable at build time via a single constant in `mhd_config.f90`.
+OpenMP threading accelerates the reconstruction and slope-limiting passes.
+Boundary conditions are configurable per side, supporting periodic,
+zero-gradient outflow, fixed, and driven inflow on each of the four domain
+edges independently.
 
 Output is written to HDF5, with each field stored as a sequence of snapshots
 alongside the realized physics parameters (gamma, Mach number, plasma beta).
@@ -52,51 +53,45 @@ by an ideal equation of state with adiabatic index gamma.
 | Component | Method |
 |-----------|--------|
 | Spatial discretization | Cell-centered finite volume on a uniform Cartesian grid |
-| Time integration | Predictor-corrector (MUSCL-Hancock); CFL-limited adaptive timestep |
+| Time integration | SSP-RK3 (Shu-Osher 1988); CFL-limited adaptive timestep |
 | Reconstruction | 2nd-order MUSCL with MOOD fallback to 1st-order at troubled cells |
 | Slope limiting | Monotonized central (default) or Van Leer mean limiter |
-| Riemann solver | Local Lax-Friedrichs / Rusanov or HLLE |
+| Riemann solver | Rusanov (default) or HLLE |
 | Divergence control | Constrained transport (CT) on staggered face-centered B; div B monitored every step |
 | Parallelism | OpenMP on reconstruction and slope-limiting loops |
 | Boundary conditions | Per-side ghost-cell layer: periodic, outflow, fixed, or driven inflow |
-
-### Time-stepping
-
-At each step CHIMERA:
-1. Fills ghost cells for all six primitive fields using the per-side BC flags.
-2. Computes BC-aware gradients and applies the slope limiter (MC or Van Leer,
-   selected at build time in `mhd_config.f90`).
-3. Predicts primitive variables half a timestep forward (MUSCL-Hancock prediction).
-4. Reconstructs left/right face states with MOOD fallback and a thermal pressure
-   positivity check to prevent unphysical states in high-field regions.
-5. Evaluates Rusanov fluxes and updates conserved variables.
-6. Advances face-centered B via constrained transport.
 
 ---
 
 ## Features
 
-- **MUSCL-Hancock predictor-corrector** - second-order accurate in space and time
+- **SSP-RK3 time integration** - third-order accurate in time; strong stability
+  preserving (Shu and Osher 1988); no new extrema in smooth flows when paired
+  with the TVD slope limiter
+- **MUSCL reconstruction** - second-order accurate in space using cell-centered
+  gradients extrapolated to face states
 - **MOOD reconstruction** - per-cell fallback to first order where reconstructed
   values exceed stencil bounds or implied thermal pressure falls below the floor
-- **Flux Solver** - Rusanov (default) or HLLE selected at build time by setting
-  `riemann_solver` in `mhd_config.f90` and recompiling.
-- **Slope limiter** - monotonized central (MC, default) or Van Leer mean; selected
-  at build time by setting `slope_limiter` in `mhd_config.f90` and recompiling.
-  MC is less diffusive and fully TVD; Van Leer is more conservative near strong shocks.
-- **Constrained transport** - staggered face-centered B updated via discrete curl
-  of Ez; div B monitored and printed each timestep
+- **Riemann solver** - Rusanov (default) or HLLE; selected at build time in
+  `mhd_config.f90`. HLLE is less diffusive; Rusanov is more robust near shocks.
+- **Slope limiter** - monotonized central (MC, default) or Van Leer mean;
+  selected at build time in `mhd_config.f90`. MC is fully TVD; Van Leer is
+  more conservative near strong shocks.
+- **Constrained transport** - staggered face-centered B updated via discrete
+  curl of Ez; div B monitored and printed each timestep
 - **Fast magnetosonic CFL condition** - timestep limited by `c_f + |v|` with a
-  Courant factor of 0.3; correct thermal pressure used for sound speed
+  Courant factor of 0.3; near-vacuum guard prevents dt collapse in low-density cells
+- **Conservative variable floors** - density, momentum, and energy floors
+  applied after each RK3 stage update; parameterized in `mhd_config.f90`
 - **Generic open boundary conditions** - four independent per-side flags
   (`BC_xlo`, `BC_xhi`, `BC_ylo`, `BC_yhi`) with ghost-cell padding each step;
-  supports periodic, zero-gradient outflow, fixed, and driven inflow (CME-ready)
+  supports periodic, zero-gradient outflow, fixed, and driven inflow
 - **Gaussian random field (GRF) initial conditions** - divergence-free velocity
   (from stream function) and magnetic field (from vector potential) generated
   from RBF-smoothed random fields; scaled to target V0 and B0 with a fast-speed
   cap; realized gamma, sonic Mach number, and plasma beta stored in output
-- **HDF5 output** - all primitive fields written as snapshot groups with a shared
-  time array and physics parameters; pressure output is thermal pressure p
+- **HDF5 output** - all primitive fields written as snapshot groups with a
+  shared time array and physics parameters; pressure output is thermal pressure p
 - **OpenMP threading** - slope-limiting and MOOD reconstruction loops
   parallelized with `!$omp parallel do`
 
@@ -121,20 +116,22 @@ CHIMERA has five built-in initial conditions selected via command-line:
 ```
 .
 |-- src/
-|   |-- main.f90                 - Time loop, CFL timestep, I/O scheduling,
-|   |                              outflow boundary flux correction
+|   |-- main.f90                 - Time loop (SSP-RK3 stages), CFL timestep,
+|   |                              I/O scheduling, outflow boundary flux correction
 |   |-- mhd_config.f90           - Global parameters (N, tEnd, CFL, floors,
-|   |                              slope limiter selection, BC type constants)
+|   |                              Riemann solver selection, slope limiter
+|   |                              selection, BC type constants)
 |   |-- mhd_init.f90             - Array allocation, grid setup, all five
 |   |                              initial conditions including GRF generation
 |   |-- mhd_bc.f90               - Ghost-cell BC module: fills (N+2)x(N+2)
 |   |                              padded arrays for each primitive field
-|   |-- mhd_change_states.f90    - Primitive <-> conserved variable conversion
+|   |-- mhd_change_states.f90    - Primitive <-> conserved variable conversion;
+|   |                              apply_conserved_floors after each RK3 stage
 |   |-- mhd_derivatives.f90      - BC-aware gradients, MC/Van Leer slope limiter,
 |   |                              MUSCL/MOOD face reconstruction,
 |   |                              thermal pressure positivity check
-|   |-- mhd_flux.f90             - Rusanov flux evaluation, BC-aware conserved
-|   |                              variable update, constrained transport
+|   |-- mhd_flux.f90             - Rusanov and HLLE flux evaluation, BC-aware
+|   |                              conserved variable update, constrained transport
 |   |-- mhd_field_ops.f90        - BC-aware discrete curl, div B diagnostic,
 |   |                              face-to-cell B averaging
 |   |-- mhd_write_h5.f90         - HDF5 output (snapshots + physics parameters)
@@ -146,8 +143,12 @@ CHIMERA has five built-in initial conditions selected via command-line:
 |   |   |-- test_change_states.f90 - Primitive <-> conserved roundtrip
 |   |   `-- test_field_ops.f90   - Curl, div B, and gradient operators
 |   |-- physics/                 - Physics fidelity tests
-|   |   `-- test_physics.py      - Mass conservation, positivity, field loop
-|   |                              convergence rate
+|   |   |-- test_physics.py      - Mass conservation, positivity, field loop
+|   |   |                          convergence rate
+|   |   `-- test_rk3.py          - SSP-RK3 specific tests: SSP property (no
+|   |                              new extrema), energy conservation bound,
+|   |                              stage coefficient regression (mass conservation
+|   |                              to machine precision on three periodic problems)
 |   |-- stress/                  - Robustness tests
 |   |   `-- test_stress.py       - GRF completion; high-Mach and low-beta regimes
 |   |-- structural/              - Output format tests
@@ -155,7 +156,7 @@ CHIMERA has five built-in initial conditions selected via command-line:
 |   |                              thermal pressure identity
 |   `-- validation/              - Quantitative validation
 |       |-- test_validation.py   - OT vortex vs Stone et al. (2008) published
-|       |                          bounds; grid convergence N=64/128/256;
+|       |                          bounds; L2 grid convergence N=64/128/256;
 |       |                          checksum guard on reference file
 |       |-- athinput.orszag_tang - Athena++ input file for reference generation
 |       `-- ot_reference.h5      - Athena++ 500x500 OT vortex reference (t=0.5)
@@ -163,6 +164,8 @@ CHIMERA has five built-in initial conditions selected via command-line:
 |   |-- run_mhd.py               - Run single simulation and animate output
 |   |-- run_mhd_MC.py            - Run Monte Carlo ensemble
 |   |-- run_tests.py             - Unified test runner (all suites)
+|   `-- plot_energy_loss.py      - Compare numerical energy dissipation between
+|                                  two solver runs
 |-- Makefile
 `-- README.md
 ```
@@ -176,7 +179,7 @@ CHIMERA has five built-in initial conditions selected via command-line:
 - Fortran compiler: `gfortran >= 9` or Intel `ifx`/`ifort`
 - HDF5 library with Fortran bindings (e.g. `libhdf5-fortran-dev`)
 - OpenMP
-- Python 3 with `h5py`, `numpy`, `matplotlib`, `pyvista`
+- Python 3 with `h5py`, `numpy`, `matplotlib`
 
 ### Build
 
@@ -218,8 +221,8 @@ python scripts/run_tests.py        # validate CHIMERA against benchmark tests
 
 **Command-line arguments:** `problem_type  grid_size  seed  output_path  filename.h5  [target_M_s  target_beta]`
 
-End time, limiter selection, and other scheme options are compile-time parameters
-in `mhd_config.f90`.
+End time, solver selection, limiter selection, and other scheme options are
+compile-time parameters in `mhd_config.f90`.
 
 ### Test
 
@@ -242,8 +245,17 @@ The validation suite includes a reference comparison test that requires
 python scripts/convert_athena_to_reference.py OrszagTang.block0.out1.00001.vtk
 ```
 
-Use `scripts/diagnose_validation.py` to plot a visual comparison of CHIMERA
-versus the Athena++ reference before running the full validation suite.
+### Solver and Limiter Selection
+
+The Riemann solver and slope limiter are each selected at build time in
+`mhd_config.f90`:
+
+```fortran
+integer, parameter :: riemann_solver = RIEMANN_RUSANOV  ! or RIEMANN_HLLE
+integer, parameter :: slope_limiter  = LIMITER_MC       ! or LIMITER_VAN_LEER
+```
+
+Change either constant and run `make` to recompile. No other files need editing.
 
 ### Slope Limiter Selection
 
@@ -254,7 +266,7 @@ integer, parameter :: slope_limiter = LIMITER_MC        ! default
 ! integer, parameter :: slope_limiter = LIMITER_VAN_LEER  ! alternative
 ```
 
-Change the constant and run `make` to recompile. No other files need editing.
+Change either constant and run `make` to recompile. No other files need editing.
 
 ---
 
@@ -313,16 +325,20 @@ with h5py.File("orszag_tang.h5", "r") as f:
 ## References
 
 - Toth, G. (2000). *The div(B)=0 constraint in shock-capturing MHD codes.* J. Comput. Phys.
-- Evans, C. R. & Hawley, J. F. (1988). *Simulation of magnetohydrodynamic flows:
+- Evans, C. R. and Hawley, J. F. (1988). *Simulation of magnetohydrodynamic flows:
   A constrained transport method.* ApJ.
+- Shu, C. W. and Osher, S. (1988). *Efficient implementation of essentially
+  non-oscillatory shock-capturing schemes.* J. Comput. Phys. 77, 439-471.
+- Harten, A., Lax, P. D., and van Leer, B. (1983). *On upstream differencing and
+  Godunov-type schemes for hyperbolic conservation laws.* SIAM Review 25, 35-61.
 - van Leer, B. (1977). *Towards the ultimate conservative difference scheme IV.*
   J. Comput. Phys. 23, 263-275. (monotonized central limiter)
 - van Leer, B. (1979). *Towards the ultimate conservative difference scheme.*
   J. Comput. Phys.
-- Clain, S., Diot, S. & Loubere, R. (2011). *A high-order finite volume method
+- Clain, S., Diot, S. and Loubere, R. (2011). *A high-order finite volume method
   for hyperbolic systems: Multi-dimensional Optimal Order Detection (MOOD).*
   J. Comput. Phys.
-- Gardiner, T. A. & Stone, J. M. (2005). *An unsplit Godunov method for ideal
+- Gardiner, T. A. and Stone, J. M. (2005). *An unsplit Godunov method for ideal
   MHD via constrained transport.* J. Comput. Phys. 205, 509-539.
 - Stone, J. M. et al. (2008). *Athena: A new code for astrophysical MHD.*
   ApJS 178, 137-177.
