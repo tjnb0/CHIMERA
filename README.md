@@ -11,14 +11,14 @@ an independent project.
 
 CHIMERA evolves the compressible ideal MHD equations in conservative form on
 a uniform 2D Cartesian grid. The numerical scheme combines second-order
-MUSCL-Hancock reconstruction with a Rusanov (local Lax-Friedrichs) Riemann
-solver and a monotonized central (MC) slope limiter, and uses constrained
-transport to preserve the divergence-free condition on B to machine precision.
-The limiter is selectable at build time (MC or Van Leer) via a single constant
-in `mhd_config.f90`. OpenMP threading accelerates the reconstruction and
-slope-limiting passes. Boundary conditions are configurable per side,
-supporting periodic, zero-gradient outflow, fixed, and driven inflow on each
-of the four domain edges independently.
+MUSCL-Hancock reconstruction with options for Rusanov (local Lax-Friedrichs) or 
+HLLE Riemann solvers and monotonized central (MC) or Van Leer slope limiters, 
+and uses constrained transport to preserve the divergence-free condition on B 
+to machine precision. The limiter is selectable at build time (MC or Van Leer) 
+via a single constant in `mhd_config.f90`. OpenMP threading accelerates the 
+reconstruction and slope-limiting passes. Boundary conditions are configurable 
+per side, supporting periodic, zero-gradient outflow, fixed, and driven inflow 
+on each of the four domain edges independently.
 
 Output is written to HDF5, with each field stored as a sequence of snapshots
 alongside the realized physics parameters (gamma, Mach number, plasma beta).
@@ -55,7 +55,7 @@ by an ideal equation of state with adiabatic index gamma.
 | Time integration | Predictor-corrector (MUSCL-Hancock); CFL-limited adaptive timestep |
 | Reconstruction | 2nd-order MUSCL with MOOD fallback to 1st-order at troubled cells |
 | Slope limiting | Monotonized central (default) or Van Leer mean limiter |
-| Riemann solver | Local Lax-Friedrichs / Rusanov |
+| Riemann solver | Local Lax-Friedrichs / Rusanov or HLLE |
 | Divergence control | Constrained transport (CT) on staggered face-centered B; div B monitored every step |
 | Parallelism | OpenMP on reconstruction and slope-limiting loops |
 | Boundary conditions | Per-side ghost-cell layer: periodic, outflow, fixed, or driven inflow |
@@ -79,6 +79,8 @@ At each step CHIMERA:
 - **MUSCL-Hancock predictor-corrector** - second-order accurate in space and time
 - **MOOD reconstruction** - per-cell fallback to first order where reconstructed
   values exceed stencil bounds or implied thermal pressure falls below the floor
+- **Flux Solver** - Rusanov (default) or HLLE selected at build time by setting
+  `riemann_solver` in `mhd_config.f90` and recompiling.
 - **Slope limiter** - monotonized central (MC, default) or Van Leer mean; selected
   at build time by setting `slope_limiter` in `mhd_config.f90` and recompiling.
   MC is less diffusive and fully TVD; Van Leer is more conservative near strong shocks.
@@ -161,10 +163,6 @@ CHIMERA has five built-in initial conditions selected via command-line:
 |   |-- run_mhd.py               - Run single simulation and animate output
 |   |-- run_mhd_MC.py            - Run Monte Carlo ensemble
 |   |-- run_tests.py             - Unified test runner (all suites)
-|   |-- convert_athena_to_reference.py - Build OT validation reference from
-|   |                              an Athena++ VTK output file
-|   `-- diagnose_validation.py   - Visual diagnostic for OT validation tests;
-|                                  plots CHIMERA vs Athena++ side-by-side
 |-- Makefile
 `-- README.md
 ```
@@ -215,6 +213,7 @@ Or using the Python scripts from the `scripts/` directory:
 ```bash
 python scripts/run_mhd.py          # single run with interactive animation
 python scripts/run_mhd_MC.py       # full Monte Carlo ensemble
+python scripts/run_tests.py        # validate CHIMERA against benchmark tests
 ```
 
 **Command-line arguments:** `problem_type  grid_size  seed  output_path  filename.h5  [target_M_s  target_beta]`
