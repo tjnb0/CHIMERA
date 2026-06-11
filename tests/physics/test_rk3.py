@@ -24,8 +24,6 @@ replacing the Hancock predictor-corrector with SSP-RK3:
 import numpy as np
 import h5py
 import pytest
-from pathlib import Path
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -50,7 +48,7 @@ def _energy_history(h5_path):
         E_mean = []
         for k in keys:
             rho = np.array(f["rho"][k])
-            P   = np.array(f["P"][k])      # thermal pressure (magnetic term stripped)
+            P   = np.array(f["P"][k])      # thermal pressure
             Bx  = np.array(f["Bx"][k])
             By  = np.array(f["By"][k])
             Vx  = np.array(f["Vx"][k])
