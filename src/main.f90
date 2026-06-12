@@ -371,7 +371,7 @@ contains
             call apply_slope_limiter(By_pad,  dx, N, N, By_dx,  By_dy)
         end if
 
-        ! MUSCL reconstruction to cell faces using cell-centre values.
+        ! MUSCL reconstruction to cell faces using cell-center values.
         call reconstruction(rho, rho_dx, rho_dy, dx, N, N, rho_XL, rho_XR, rho_YL, rho_YR,  .true.)
         call reconstruction(vx,  vx_dx,  vx_dy,  dx, N, N, vx_XL,  vx_XR,  vx_YL,  vx_YR,  .false.)
         call reconstruction(vy,  vy_dx,  vy_dy,  dx, N, N, vy_XL,  vy_XR,  vy_YL,  vy_YR,  .false.)
@@ -380,7 +380,7 @@ contains
         call reconstruction(By,  By_dx,  By_dy,  dx, N, N, By_XL,  By_XR,  By_YL,  By_YR,  .false.)
 
         ! Thermal pressure positivity check (MOOD extension).
-        ! Cell-centre values are the fallback (was _prime in Hancock scheme).
+        ! Cell-center values are the fallback.
         call thermal_pressure_check(N, N,   &
             P_XL,  P_XR,  P_YL,  P_YR,      &
             Bx_XL, Bx_XR, Bx_YL, Bx_YR,     &

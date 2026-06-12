@@ -54,14 +54,6 @@ module mhd_init
     real(8), allocatable :: Bx_dx(:,:), Bx_dy(:,:)   ! Bx
     real(8), allocatable :: By_dx(:,:), By_dy(:,:)   ! By
 
-    ! Limited slopes of primitive vars
-    real(8), allocatable :: rho_prime(:,:)           ! density
-    real(8), allocatable :: vx_prime(:,:)            ! vx
-    real(8), allocatable :: vy_prime(:,:)            ! vy
-    real(8), allocatable :: P_prime(:,:)             ! pressure  
-    real(8), allocatable :: Bx_prime(:,:)            ! Bx
-    real(8), allocatable :: By_prime(:,:)            ! By
-
     ! Reconstructed primitive boundary values (left/right in x and y)
     real(8), allocatable :: rho_XL(:,:), rho_XR(:,:) ! density (x)
     real(8), allocatable :: rho_YL(:,:), rho_YR(:,:) ! density (y)
@@ -134,10 +126,6 @@ contains
         allocate(P_dx(N,N), P_dy(N,N))        ! Pressure gradients
         allocate(Bx_dx(N,N), Bx_dy(N,N))      ! Bx gradients
         allocate(By_dx(N,N), By_dy(N,N))      ! By gradients
-
-        ! Allocate arrays for limited slopes (after slope limiting)
-        allocate(rho_prime(N,N), vx_prime(N,N), vy_prime(N,N), P_prime(N,N))
-        allocate(Bx_prime(N,N), By_prime(N,N))
 
         ! Allocate arrays for reconstructed boundary values (left/right in x and y)
         allocate(rho_XL(N,N), rho_XR(N,N), rho_YL(N,N), rho_YR(N,N))
