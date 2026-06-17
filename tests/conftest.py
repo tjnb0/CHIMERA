@@ -54,13 +54,17 @@ def run_sim(built_executable, tmp_path):
         h5 = run_sim(problem_type=1, N=32)
         h5 = run_sim(problem_type=5, N=64, seed=42, h5_name="mc.h5")
 
-        # GRF stress-test overrides (args 6 & 7 to the binary):
-        #   extra_args=[target_M_s, target_beta]
-        #   Pass -1 for either to keep random sampling for that parameter.
+        # GRF stress-test overrides (args 6, 7, 8):
+        #   extra_args=[target_M_s, target_beta, target_gamma]
+        #   Pass -1 for any parameter to keep random sampling for that value.
         h5 = run_sim(problem_type=5, N=64, seed=1,
-                     extra_args=[5.0, -1.0])   # high-Mach, beta random
+                     extra_args=[5.0, -1.0])          # high-Mach, beta/gamma random
         h5 = run_sim(problem_type=5, N=64, seed=1,
-                     extra_args=[-1.0, 0.1])   # M_s random, low-beta
+                     extra_args=[-1.0, 0.1])           # M_s random, low-beta, gamma random
+        h5 = run_sim(problem_type=5, N=64, seed=1,
+                     extra_args=[0.81, 1.63, 1.68])    # MC477 diagnosed conditions
+        h5 = run_sim(problem_type=5, N=64, seed=1,
+                     extra_args=[0.91, 1.69, 1.35])    # MC1862 diagnosed conditions
     """
     def _run(problem_type, N, seed=0, h5_name=None, timeout=180,
              extra_args=None):
