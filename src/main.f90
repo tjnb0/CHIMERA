@@ -20,6 +20,11 @@ program main
     real(kind=8), allocatable :: Mass_0(:,:), Momx_0(:,:), Momy_0(:,:), Energy_0(:,:)
     real(kind=8), allocatable :: bx_0(:,:), by_0(:,:)
 
+    ! Domain-mean density for proportional density floor.
+    ! Computed once from u^n at the start of each timestep and passed to
+    ! all apply_conserved_floors calls.
+    real(kind=8) :: rho_mean_step
+
     ! Get desired problem, output path, and filename
     call get_user_options()
 
@@ -83,6 +88,7 @@ program main
         dt = max(dt, 1e-12)
 
         ! Save u^n for SSP-RK3 linear combinations.
+        rho_mean_step = sum(Mass) / (vol * dble(N*N))   ! domain-mean rho for proportional floor
         Mass_0   = Mass;   Momx_0 = Momx; Momy_0 = Momy
         Energy_0 = Energy; bx_0   = b_x;  by_0   = b_y
 
@@ -110,7 +116,7 @@ program main
         call update_conserved(Momx,   flux_Momx_X,   flux_Momx_Y,   dx, dt, N, N)
         call update_conserved(Momy,   flux_Momy_X,   flux_Momy_Y,   dx, dt, N, N)
         call update_conserved(Energy, flux_Energy_X, flux_Energy_Y, dx, dt, N, N)
-        call apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, N, N)
+        call apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, N, N, rho_mean_step)
         call constrained_transport(b_x, b_y, flux_By_X, flux_Bx_Y, dx, dt, N, N)
 
         ! Outflow boundary flux correction (xlo and ylo non-periodic faces).
@@ -163,7 +169,7 @@ program main
         call update_conserved(Momx,   flux_Momx_X,   flux_Momx_Y,   dx, dt, N, N)
         call update_conserved(Momy,   flux_Momy_X,   flux_Momy_Y,   dx, dt, N, N)
         call update_conserved(Energy, flux_Energy_X, flux_Energy_Y, dx, dt, N, N)
-        call apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, N, N)
+        call apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, N, N, rho_mean_step)
         call constrained_transport(b_x, b_y, flux_By_X, flux_Bx_Y, dx, dt, N, N)
 
         if (bc_xlo /= BC_PERIODIC) then
@@ -205,7 +211,7 @@ program main
         Energy = 0.75d0*Energy_0 + 0.25d0*Energy
         b_x    = 0.75d0*bx_0     + 0.25d0*b_x
         b_y    = 0.75d0*by_0     + 0.25d0*b_y
-        call apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, N, N)
+        call apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, N, N, rho_mean_step)
 
 
         ! ============================================================
@@ -222,7 +228,7 @@ program main
         call update_conserved(Momx,   flux_Momx_X,   flux_Momx_Y,   dx, dt, N, N)
         call update_conserved(Momy,   flux_Momy_X,   flux_Momy_Y,   dx, dt, N, N)
         call update_conserved(Energy, flux_Energy_X, flux_Energy_Y, dx, dt, N, N)
-        call apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, N, N)
+        call apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, N, N, rho_mean_step)
         call constrained_transport(b_x, b_y, flux_By_X, flux_Bx_Y, dx, dt, N, N)
 
         if (bc_xlo /= BC_PERIODIC) then
@@ -264,7 +270,7 @@ program main
         Energy = (1.d0/3.d0)*Energy_0 + (2.d0/3.d0)*Energy
         b_x    = (1.d0/3.d0)*bx_0     + (2.d0/3.d0)*b_x
         b_y    = (1.d0/3.d0)*by_0     + (2.d0/3.d0)*b_y
-        call apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, N, N)
+        call apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, N, N, rho_mean_step)
 
 
         ! ----------------------------------------------------------------
@@ -379,7 +385,7 @@ contains
         call reconstruction(Bx,  Bx_dx,  Bx_dy,  dx, N, N, Bx_XL,  Bx_XR,  Bx_YL,  Bx_YR,  .false.)
         call reconstruction(By,  By_dx,  By_dy,  dx, N, N, By_XL,  By_XR,  By_YL,  By_YR,  .false.)
 
-        ! Thermal pressure positivity check (MOOD extension).
+        ! Thermal pressure positivity check
         ! Cell-center values are the fallback.
         call thermal_pressure_check(N, N,   &
             P_XL,  P_XR,  P_YL,  P_YR,      &
@@ -388,7 +394,8 @@ contains
             rho_XL, rho_XR, rho_YL, rho_YR, &
             vx_XL,  vx_XR,  vx_YL,  vx_YR,  &
             vy_XL,  vy_XR,  vy_YL,  vy_YR,  &
-            rho, vx, vy, P, Bx, By)
+            rho, vx, vy, P, Bx, By,          &
+            sum(P - 0.5d0*(Bx*Bx + By*By)) / dble(N*N))
 
         ! Riemann fluxes in x-direction (normal = vx, tangential = vy)
         call compute_fluxes(rho_XL, rho_XR, vx_XL, vx_XR, vy_XL, vy_XR, P_XL, P_XR, &

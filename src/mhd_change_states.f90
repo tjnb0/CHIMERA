@@ -113,7 +113,8 @@ contains
     end subroutine get_primitive
 
 
-    subroutine apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, nx, ny)
+    subroutine apply_conserved_floors(Mass, Momx, Momy, Energy, Bx, By, vol, gamma, nx, ny, &
+                                       rho_mean)
     !
     !   Enforce physical limits on conserved variables after update_conserved.
     !   Called once per timestep before get_primitive.
@@ -121,23 +122,32 @@ contains
     !   Checks applied:
     !       1. Mass floor: negative mass is unphysical; zero momentum and
     !          reset energy to magnetic-only floor when mass is floored.
+    !          floor is  max(rho_floor, rho_floor_frac * rho_mean) to prevent
+    !          near-vacuum rarefaction in pressure-floored cells
     !       2. Energy floor: energy below the magnetic floor implies negative
     !          thermal pressure regardless of momentum; clamp it.
     !       3. Momentum limiting: cap implied velocity at V_MAX to prevent
     !          near-vacuum cells with residual momentum from blowing up the CFL
     !          and the reconstruction prediction step.
     !
-    !
         integer, intent(in)    :: nx, ny
         real(8), intent(inout) :: Mass(nx,ny), Momx(nx,ny), Momy(nx,ny)
         real(8), intent(inout) :: Energy(nx,ny)
         real(8), intent(in)    :: Bx(nx,ny), By(nx,ny)
         real(8), intent(in)    :: vol, gamma
+        real(8), intent(in)    :: rho_mean          ! domain-mean density for proportional floor
 
         real(8) :: halfB2(nx,ny), E_mag_floor(nx,ny)
         real(8) :: v_mag(nx,ny), scale(nx,ny)
+        real(8) :: rho_min_local                    ! effective minimum density this step
 
-        real(8), parameter :: V_MAX = 50.0d0   ! velocity cap for near-vacuum cells
+        real(8), parameter :: V_MAX = 50.0d0        ! velocity cap for near-vacuum cells
+
+        ! Proportional density floor.
+        ! Absolute rho_floor allowed cells to go to near-zero density
+        ! while thermally floored, creating voids. Proportional term  should
+        ! help rho stay at a meaningful fraction of the domain mean
+        rho_min_local = max(rho_floor, rho_floor_frac * rho_mean)
 
         ! Magnetic-only energy floor: E >= 0.5*(Bx^2+By^2)*vol
         halfB2      = 0.5d0*(Bx*Bx + By*By)
@@ -146,10 +156,10 @@ contains
         ! Check mass floor 
         ! Negative mass -> velocity and thermal pressure blow up. Zero momentum
         ! and sync energy to a magnetic state
-        where (Mass < rho_floor * vol)
+        where (Mass < rho_min_local * vol)
             Momx   = 0.0d0
             Momy   = 0.0d0
-            Mass   = rho_floor * vol
+            Mass   = rho_min_local * vol
             Energy = max(Energy, (P_floor / (gamma - 1.0d0) + halfB2) * vol)
         end where
 

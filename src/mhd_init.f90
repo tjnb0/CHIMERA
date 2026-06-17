@@ -253,6 +253,18 @@ contains
             target_beta = -1.0d0
         end if
 
+        ! Arg 8: target_gamma (optional, GRF / problem 5 only).
+        ! Pass a negative value (e.g. -1) to keep the default random sampling.
+        ! Valid range: (1.0, 2.0); values outside this are treated as random.
+        if (nargs >= 8) then
+            call get_command_argument(8, arg_str)
+            read(arg_str, *, iostat=istat) target_gamma
+            if (istat /= 0 .or. target_gamma <= 1.0d0 .or. target_gamma >= 2.0d0) &
+                target_gamma = -1.0d0
+        else
+            target_gamma = -1.0d0
+        end if
+
     end subroutine get_user_options
 
 
@@ -514,7 +526,11 @@ contains
         call random_number(rand_vals)
         
         ! Gamma: specific heat ratio
-        gamma_val = 1.2d0 + 0.5d0 * rand_vals(1)  ! Range: Unif(1.2, 1.7)
+        if (target_gamma > 1.0d0 .and. target_gamma < 2.0d0) then
+            gamma_val = target_gamma                           ! stress-test override
+        else
+            gamma_val = 1.2d0 + 0.5d0 * rand_vals(1)          ! Range: Unif(1.2, 1.7)
+        end if
         !   - gamma ~ 5/3 ~ 1.67: Monatomic gas
         !   - gamma ~ 1.4: Diatomic gas
         !   - gamma ~ 1.2: Approaching isothermal
@@ -855,7 +871,22 @@ contains
 
         ! Convert to total pressure for setup
         P = P + 0.5d0*(Bx*Bx + By*By)
-        deallocate(psi, A_pot, grf_rho, grf_P)
+
+        ! Pointwise thermal-pressure positivity guard.
+        block
+            real(8) :: B2_ij, p_th_ij, p_th_min_ic
+            integer :: ic, jc
+            p_th_min_ic = p_th_ic_frac * P_mean
+            do jc = 1, N
+                do ic = 1, N
+                    B2_ij   = Bx(ic,jc)**2 + By(ic,jc)**2
+                    p_th_ij = P(ic,jc) - 0.5d0 * B2_ij
+                    if (p_th_ij < p_th_min_ic) then
+                        P(ic,jc) = 0.5d0 * B2_ij + p_th_min_ic
+                    end if
+                end do
+            end do
+        end block
 
     end subroutine setup_GRF_fields
 
