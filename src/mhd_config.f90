@@ -60,10 +60,14 @@ module mhd_config
     real(8), parameter :: rho_floor = 1.0d-12                 ! Minimum density floor
     real(8), parameter :: e_floor_frac = 1.0d-10              ! Proportional P floor: p >= e_floor_frac*(KE + MagE)
     real(8), parameter :: cf_max = 1.0d2                      ! Maximumum fast magnetosonic speed
+    real(8), parameter :: rho_floor_frac = 1.0d-3             ! proportional density floor
+    real(8), parameter :: p_th_mood_frac = 1.0d-4             ! relative thermal-pressure threshold
+    real(8), parameter :: p_th_ic_frac = 1.0d-2               ! IC thermal-pressure positivity
 
     ! Target parameters for GRF 
     ! Negative = sample randomly within bounds
-    real(8) :: target_M_s  = -1.0d0   ! Sonic Mach number override in command line
-    real(8) :: target_beta = -1.0d0   ! Plasma beta override in command line
+    real(8) :: target_M_s    = -1.0d0   ! Sonic Mach number override in command line
+    real(8) :: target_beta   = -1.0d0   ! Plasma beta override in command line
+    real(8) :: target_gamma  = -1.0d0   ! Adiabatic index override in command line
 
 end module mhd_config
