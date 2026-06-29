@@ -35,10 +35,10 @@ alongside the realized physics parameters (gamma, Mach number, plasma beta).
 CHIMERA advances the compressible MHD system as:
 
 ```
-d(rho)/dt   + div(rho*v)                       = 0      (mass)
-d(rho*v)/dt + div(rho*v*v + P*I - B*B)         = 0      (momentum)
-d(E)/dt     + div((E + P*)*v - B*(v.B))        = 0      (energy)
-d(B)/dt     - curl(v x B)                      = 0      (induction)
+d(rho)/dt   + div(rho*v)                = 0    (mass)
+d(rho*v)/dt + div(rho*v*v + P*I - B*B)  = 0    (momentum)
+d(E)/dt     + div((E + P*)*v - B*(v.B)) = 0    (energy)
+d(B)/dt     - curl(v x B)               = 0    (induction)
 ```
 
 where `P* = p + |B|^2/2` is the total (thermal + magnetic) pressure and `E`
